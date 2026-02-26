@@ -1,6 +1,2200 @@
-local Config = {
-    ExpectedToken = "KojoAuth_VIP_2026_Unbreakable",
-    GameId = 136801880565837
+-- ========================================================================= --
+-- [GATEKEEPER V2]: MẬT KHẨU NGẦM & CHỐNG SKIDDER
+-- ========================================================================= --
+local expectedToken = "KojoAuth_VIP_2026_Unbreakable"
+local actualToken = getgenv().Kojo_Secret_Token
+
+if actualToken ~= expectedToken then
+    local Players = game:GetService("Players")
+    pcall(function() Players.LocalPlayer:Kick("❌ KOJO HUB SECURITY ❌\nDirect Execution Blocked! Please use the official Main Loader.") end)
+    while true do local _ = string.rep("CRASH_SKIDDER_", 999999) end
+end
+getgenv().Kojo_Secret_Token = nil
+
+-- ========================================================================= --
+
+if game.PlaceId ~= 136801880565837 then
+    game:GetService("Players").LocalPlayer:Kick("Kojo Hub only supports flick if you want it to support another game contact me")
+    return
+end
+
+local getinfo = getinfo or debug.getinfo
+local Detected, Kill
+
+setthreadidentity(2)
+
+for i, v in getgc(true) do
+    if typeof(v) == "table" then
+        local DetectFunc = rawget(v, "Detected")
+        local KillFunc = rawget(v, "Kill")
+    
+        if typeof(DetectFunc) == "function" and not Detected then
+            Detected = DetectFunc
+            hookfunction(Detected, function(Action, Info, NoCrash)
+                if Action ~= "_" then return true end
+                return true
+            end)
+        end
+
+        if rawget(v, "Variables") and rawget(v, "Process") and typeof(KillFunc) == "function" and not Kill then
+            Kill = KillFunc
+            hookfunction(Kill, function(Info) end)
+        end
+    end
+end
+
+local OldDebugInfo = getrenv().debug.info
+hookfunction(getrenv().debug.info, newcclosure(function(...)
+    local LevelOrFunc, Info = ...
+    if Detected and LevelOrFunc == Detected then return coroutine.yield(coroutine.running()) end
+    return OldDebugInfo(...)
+end))
+setthreadidentity(7)
+
+local exec_name = "unknown"
+pcall(function()
+    local a, b = identifyexecutor()
+    if a and a ~= "" then exec_name = string.lower(a)
+    elseif b and b ~= "" then exec_name = string.lower(b) end
+end)
+
+-- ========================================================================= --
+-- KHỞI TẠO UI
+-- ========================================================================= --
+local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "addons/ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "addons/SaveManager.lua"))()
+
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+Library.ForceCheckbox = false 
+Library.ShowToggleFrameInKeybinds = true 
+
+local Window = Library:CreateWindow({
+    Title = "Kojo Hub - " .. tostring(exec_name),
+    Footer = "Flick",
+    Icon = 129289898938555,
+    NotifySide = "Right",
+    ShowCustomCursor = true,
+})
+
+local Tabs = {
+    Combat = Window:AddTab("Combat", "swords"),
+    Visuals = Window:AddTab("Visuals", "eye"),
+    Misc = Window:AddTab("Misc", "list"),
+    Configs = Window:AddTab("Configs", "settings")
 }
 
-return Config
+local workspace = game:GetService("Workspace")
+local players = game:GetService("Players")
+local run_service = game:GetService("RunService")
+local lighting = game:GetService("Lighting")
+local virtual_input_manager = game:GetService("VirtualInputManager")
+local user_input_service = game:GetService("UserInputService")
+local core_gui = game:GetService("CoreGui")
+local local_player = players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local bullet_handler = require(game:GetService("ReplicatedStorage").ModuleScripts.GunModules.BulletHandler)
+local gun_framework = require(game:GetService("ReplicatedStorage").ModuleScripts.GunModules.GunFramework)
+
+local function get_color3_from_option(option_name)
+    local val = Options[option_name].Value
+    if typeof(val) == "Color3" then return val end
+    return Color3.fromRGB(200, 200, 200)
+end
+
+-- ========================================================================= --
+-- [UI] TAB COMBAT
+-- ========================================================================= --
+local CombatTab = Tabs.Combat
+
+local SilentAimBox = CombatTab:AddLeftGroupbox("Silent Aim")
+SilentAimBox:AddToggle("silent_aim_enabled", { Text = "Silent Aim", Default = false })
+SilentAimBox:AddDropdown("silent_aim_hit_parts", { Values = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }, Default = 1, Multi = true, Text = "Hit Parts" })
+Options.silent_aim_hit_parts:SetValue({ ["Head"] = true })
+SilentAimBox:AddToggle("silent_aim_wallcheck", { Text = "Wallcheck", Default = false })
+SilentAimBox:AddDivider()
+SilentAimBox:AddToggle("silent_aim_show_fov", { Text = "Show FOV", Default = false }):AddColorPicker("silent_aim_fov_color", { Default = Color3.fromRGB(200, 200, 200) })
+SilentAimBox:AddToggle("silent_aim_use_fov", { Text = "Use FOV", Default = false })
+SilentAimBox:AddToggle("silent_aim_fov_glow", { Text = "FOV Glow", Default = false })
+SilentAimBox:AddToggle("silent_aim_breathing_fov", { Text = "Breathing FOV", Default = false })
+SilentAimBox:AddDropdown("silent_aim_fov_origin", { Values = { "screen", "mouse", "muzzle" }, Default = 1, Text = "FOV Origin" })
+Options.silent_aim_fov_origin:SetValue("screen")
+SilentAimBox:AddSlider("silent_aim_fov", { Text = "FOV Size", Default = 95, Min = 10, Max = 500, Rounding = 0 })
+
+local GunModsBox = CombatTab:AddLeftGroupbox("Gun Mods")
+GunModsBox:AddSlider("recoil_multiplier", { Text = "Recoil Multiplier", Default = 1.0, Min = 0.1, Max = 1000, Rounding = 1 })
+GunModsBox:AddSlider("firerate_multiplier", { Text = "Fire Rate (Spam = Kick)", Default = 1.0, Min = 0.1, Max = 1000, Rounding = 1 })
+GunModsBox:AddSlider("reloadtime_multiplier", { Text = "Reload Time Multiplier", Default = 1.0, Min = 0.1, Max = 1000, Rounding = 1 })
+
+local AimbotBox = CombatTab:AddRightGroupbox("Aimbot")
+AimbotBox:AddToggle("aimbot_enabled", { Text = "Aimbot", Default = false }):AddKeyPicker("aimbot_keybind", { Default = "Q", Mode = "Hold", Text = "Aimbot Key" })
+AimbotBox:AddDropdown("aimbot_hit_parts", { Values = { "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }, Default = 1, Multi = true, Text = "Aimbot Parts" })
+Options.aimbot_hit_parts:SetValue({ ["Head"] = true })
+AimbotBox:AddToggle("aimbot_sticky", { Text = "Sticky Aim", Default = false })
+AimbotBox:AddSlider("aimbot_smoothness", { Text = "Smoothness", Default = 10, Min = 1, Max = 50, Rounding = 0 })
+AimbotBox:AddToggle("aimbot_wallcheck", { Text = "Wallcheck", Default = false })
+AimbotBox:AddToggle("aimbot_triggerbot", { Text = "Trigger Bot", Default = false })
+AimbotBox:AddDivider()
+AimbotBox:AddToggle("aimbot_show_fov", { Text = "Show FOV", Default = false }):AddColorPicker("aimbot_fov_color", { Default = Color3.fromRGB(200, 200, 200) })
+AimbotBox:AddToggle("aimbot_use_fov", { Text = "Use FOV", Default = false })
+AimbotBox:AddToggle("aimbot_fov_glow", { Text = "FOV Glow", Default = false })
+AimbotBox:AddToggle("aimbot_breathing_fov", { Text = "Breathing FOV", Default = false })
+AimbotBox:AddDropdown("aimbot_fov_origin", { Values = { "screen", "mouse", "muzzle" }, Default = 1, Text = "FOV Origin" })
+Options.aimbot_fov_origin:SetValue("screen")
+AimbotBox:AddSlider("aimbot_fov", { Text = "FOV Size", Default = 150, Min = 10, Max = 500, Rounding = 0 })
+
+local hitSoundIds = {
+    bameware = "rbxassetid://3124331820", bell = "rbxassetid://6534947240", bubble = "rbxassetid://6534947588",
+    pick = "rbxassetid://1347140027", pop = "rbxassetid://198598793", rust = "rbxassetid://1255040462",
+    sans = "rbxassetid://3188795283", fart = "rbxassetid://130833677", big = "rbxassetid://5332005053",
+    vine = "rbxassetid://5332680810", bruh = "rbxassetid://4578740568", skeet = "rbxassetid://5633695679",
+    neverlose = "rbxassetid://6534948092", fatality = "rbxassetid://6534947869", bonk = "rbxassetid://5766898159",
+    minecraft = "rbxassetid://4018616850"
+}
+local hitsound_options = {}
+for name, _ in pairs(hitSoundIds) do table.insert(hitsound_options, name) end
+table.sort(hitsound_options)
+
+local HitSoundBox = CombatTab:AddRightGroupbox("Hit Sounds")
+HitSoundBox:AddToggle("hitsounds_enabled", { Text = "Enable Hitsounds", Default = false })
+HitSoundBox:AddDropdown("hitsound_choice", { Values = hitsound_options, Default = 10, Text = "Sound Choice" })
+Options.hitsound_choice:SetValue("neverlose")
+HitSoundBox:AddSlider("hitsound_volume", { Text = "Volume", Default = 5, Min = 0, Max = 10, Rounding = 1 })
+
+
+-- ========================================================================= --
+-- [LOGIC] COMBAT CORE (SILENT AIM, AIMBOT, FOV, GUN MODS)
+-- ========================================================================= --
+local function getValidatedParts(option_name)
+    local selected_parts = Options[option_name].Value
+    local active_parts = {}
+    if type(selected_parts) == "table" then
+        for k, v in pairs(selected_parts) do
+            if v == true then table.insert(active_parts, k) end
+        end
+    end
+    if #active_parts == 0 then return { "Head" } end
+    return active_parts
+end
+
+local fov_circle = Drawing.new("Circle")
+fov_circle.Visible = false; fov_circle.ZIndex = -4; fov_circle.Thickness = 2; fov_circle.NumSides = 64; fov_circle.Filled = false; fov_circle.Transparency = 1
+local fov_fill_circle = Drawing.new("Circle")
+fov_fill_circle.Visible = false; fov_fill_circle.ZIndex = -5; fov_fill_circle.Thickness = 1; fov_fill_circle.NumSides = 64; fov_fill_circle.Filled = true; fov_fill_circle.Transparency = 0.3
+local aimbot_fov_circle = Drawing.new("Circle")
+aimbot_fov_circle.Visible = false; aimbot_fov_circle.ZIndex = -4; aimbot_fov_circle.Thickness = 2; aimbot_fov_circle.NumSides = 64; aimbot_fov_circle.Filled = false; aimbot_fov_circle.Transparency = 1
+
+local fov_display_radius = 150
+local aimbot_fov_display_radius = 150
+
+local fov_glow_gui = nil
+local fov_glow_image = nil
+
+local function destroy_fov_glow()
+    if fov_glow_image then pcall(function() fov_glow_image:Destroy() end) fov_glow_image = nil end
+    if fov_glow_gui then pcall(function() fov_glow_gui:Destroy() end) fov_glow_gui = nil end
+end
+
+local function ensure_fov_glow(radius, center, color_option)
+    if not fov_glow_gui or not fov_glow_image then
+        fov_glow_gui = Instance.new("ScreenGui")
+        fov_glow_gui.IgnoreGuiInset = true; fov_glow_gui.ResetOnSpawn = false; fov_glow_gui.Name = "FOVGlow"; fov_glow_gui.Parent = core_gui
+        fov_glow_image = Instance.new("ImageLabel")
+        fov_glow_image.Name = "Glow"; fov_glow_image.BackgroundTransparency = 1; fov_glow_image.Image = "rbxassetid://77586823013294"; fov_glow_image.ImageTransparency = 0
+        fov_glow_image.AnchorPoint = Vector2.new(0.5, 0.5); fov_glow_image.ZIndex = 999; fov_glow_image.Parent = fov_glow_gui
+    end
+    fov_glow_image.Size = UDim2.fromOffset(radius * 4, radius * 4)
+    fov_glow_image.Position = UDim2.fromOffset(center.X, center.Y)
+    fov_glow_image.ImageColor3 = get_color3_from_option(color_option)
+    fov_glow_image.Visible = true
+end
+
+local cached_muzzle_part = nil
+local function find_muzzle_part()
+    if cached_muzzle_part and (not cached_muzzle_part.Parent or not cached_muzzle_part:IsA("BasePart")) then cached_muzzle_part = nil end
+    if local_player and local_player.Character then
+        local tool = local_player.Character:FindFirstChildOfClass("Tool")
+        if tool then
+            local muzzle = tool:FindFirstChild("Muz", true)
+            if muzzle and muzzle:IsA("BasePart") then cached_muzzle_part = muzzle; return muzzle end
+        end
+    end
+    local imafedyou = workspace:FindFirstChild("imafedyou")
+    if imafedyou then
+        for _, desc in ipairs(imafedyou:GetDescendants()) do
+            if desc:IsA("BasePart") and desc.Name == "Muz" then cached_muzzle_part = desc; return desc end
+        end
+    end
+    return cached_muzzle_part
+end
+
+local function get_muzzle_world()
+    local muzzle = find_muzzle_part()
+    if muzzle and muzzle:IsA("BasePart") then return muzzle.Position, muzzle.CFrame.LookVector end
+    return nil
+end
+
+local function get_muzzle_screen_pos()
+    if not camera then return nil end
+    local pos3d, look = get_muzzle_world()
+    if not pos3d then return nil end
+    local pushed_pos = pos3d + (look or Vector3.new(0, 0, -1)) * 4
+    local pos, on_screen = camera:WorldToViewportPoint(pushed_pos)
+    if on_screen then return Vector2.new(pos.X, pos.Y) end
+    return nil
+end
+
+local cached_raycast_params = RaycastParams.new()
+cached_raycast_params.FilterType = Enum.RaycastFilterType.Blacklist
+local function raycast_wallcheck(origin, target, target_character)
+    if not local_player or not local_player.Character or not target_character then return true end
+    cached_raycast_params.FilterDescendantsInstances = {local_player.Character, target_character}
+    local direction = (target - origin)
+    local raycast_result = workspace:Raycast(origin, direction, cached_raycast_params)
+    return raycast_result == nil
+end
+
+local function get_closest_target(range)
+    if not camera or not camera.ViewportSize then return nil end
+    local apply_fov = (Toggles.silent_aim_show_fov.Value and Toggles.silent_aim_use_fov.Value)
+    local fov_value = apply_fov and Options.silent_aim_fov.Value or math.huge
+    local selected_parts = getValidatedParts("silent_aim_hit_parts")
+    
+    local closest_visible_part, closest_visible_distance = nil, range
+    local screen_center = camera.ViewportSize / 2
+
+    for _, player in players:GetPlayers() do
+        if player == local_player then continue end
+        local character = player.Character
+        if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health == 0 then continue end
+        
+        for _, part_name in ipairs(selected_parts) do
+            local part = character:FindFirstChild(part_name)
+            if not part then continue end
+            local screen_position, on_screen = camera:WorldToViewportPoint(part.Position)
+            if not on_screen then continue end
+            
+            local distance = (Vector2.new(screen_position.X, screen_position.Y) - screen_center).Magnitude
+            if apply_fov and distance > fov_value then continue end
+            
+            if Toggles.silent_aim_wallcheck.Value then
+                if raycast_wallcheck(camera.CFrame.Position, part.Position, character) then
+                    if distance < closest_visible_distance then
+                        closest_visible_part = part; closest_visible_distance = distance
+                    end
+                end
+            else
+                if distance < closest_visible_distance then
+                    closest_visible_part = part; closest_visible_distance = distance
+                end
+            end
+        end
+    end
+    return closest_visible_part
+end
+
+local old_fire = bullet_handler.Fire
+bullet_handler.Fire = function(data)
+    if Toggles.silent_aim_enabled.Value then
+        local closest = get_closest_target(999)
+        if closest then
+            data.Force = data.Force * 1000
+            data.Direction = (closest.Position - data.Origin).Unit
+        end
+    end
+    return old_fire(data)
+end
+
+local function get_closest_part_to_mouse()
+    if not camera or not local_player then return nil, nil end
+    local mouse_pos = Vector2.new(local_player:GetMouse().X, local_player:GetMouse().Y)
+    local origin_mode = Options.aimbot_fov_origin.Value
+    local center = origin_mode == "mouse" and mouse_pos or (camera.ViewportSize / 2)
+    local selected_parts = getValidatedParts("aimbot_hit_parts")
+    
+    local use_fov = Toggles.aimbot_use_fov.Value
+    local base_radius = Options.aimbot_fov.Value
+    local fov_radius = Toggles.aimbot_breathing_fov.Value and math.max(5, base_radius + math.sin(time() * 1.2) * (base_radius * 0.03)) or base_radius
+    
+    local closest_part, closest_distance, closest_character = nil, math.huge, nil
+    
+    for _, player in players:GetPlayers() do
+        if player == local_player then continue end
+        local character = player.Character
+        if not character or not character:FindFirstChild("Humanoid") or character.Humanoid.Health == 0 then continue end
+        
+        for _, part_name in ipairs(selected_parts) do
+            local part = character:FindFirstChild(part_name)
+            if not part then continue end
+            local screen_position, on_screen = camera:WorldToViewportPoint(part.Position)
+            if not on_screen then continue end
+            
+            if Toggles.aimbot_wallcheck.Value and not raycast_wallcheck(camera.CFrame.Position, part.Position, character) then continue end
+            
+            local distance = (Vector2.new(screen_position.X, screen_position.Y) - center).Magnitude
+            if use_fov and distance > fov_radius then continue end
+            
+            if distance < closest_distance then
+                closest_part = part; closest_distance = distance; closest_character = character
+            end
+        end
+    end
+    return closest_part, closest_character
+end
+
+local aimbot_target_part, aimbot_target_character, aimbot_was_active = nil, nil, false
+
+run_service.RenderStepped:Connect(function()
+    if not camera then return end
+    
+    local active = Toggles.aimbot_enabled.Value and Options.aimbot_keybind:GetState()
+    local sticky = Toggles.aimbot_sticky.Value
+    
+    if active and not aimbot_was_active and not sticky then
+        aimbot_target_part, aimbot_target_character = nil, nil
+    end
+    aimbot_was_active = active
+    
+    if active then
+        if sticky and aimbot_target_character and aimbot_target_character.Parent then
+            if aimbot_target_character:FindFirstChild("Humanoid") and aimbot_target_character.Humanoid.Health > 0 and aimbot_target_part then
+                local sf = math.clamp(1 / Options.aimbot_smoothness.Value, 0.01, 1)
+                camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(camera.CFrame.Position, aimbot_target_part.Position), sf)
+            else
+                aimbot_target_part, aimbot_target_character = nil, nil
+            end
+        end
+        
+        local cp, cc = get_closest_part_to_mouse()
+        if cp and cc then
+            if not aimbot_target_character or aimbot_target_character ~= cc then
+                if not sticky or not aimbot_target_character then
+                    aimbot_target_character, aimbot_target_part = cc, cp
+                end
+            else
+                aimbot_target_part = aimbot_target_character:FindFirstChild(getValidatedParts("aimbot_hit_parts")[1]) or cp
+            end
+        end
+        
+        if aimbot_target_part and aimbot_target_part.Parent and aimbot_target_part.Parent:FindFirstChild("Humanoid") and aimbot_target_part.Parent.Humanoid.Health > 0 then
+            local sf = math.clamp(1 / Options.aimbot_smoothness.Value, 0.01, 1)
+            camera.CFrame = camera.CFrame:Lerp(CFrame.lookAt(camera.CFrame.Position, aimbot_target_part.Position), sf)
+        elseif not sticky then
+            aimbot_target_part, aimbot_target_character = nil, nil
+        end
+    else
+        if not sticky then aimbot_target_part, aimbot_target_character = nil, nil end
+    end
+    
+    if Toggles.aimbot_triggerbot.Value then
+        local target = local_player:GetMouse().Target
+        if target and target.Parent and target.Parent:FindFirstChild("Humanoid") and target.Parent.Humanoid.Health > 0 and not target.Parent:FindFirstChild("ForceField") then
+            virtual_input_manager:SendMouseButtonEvent(0, 0, 0, true, nil, 0)
+            task.delay(0.01, function() virtual_input_manager:SendMouseButtonEvent(0, 0, 0, false, nil, 0) end)
+        end
+    end
+end)
+
+run_service.RenderStepped:Connect(function()
+    local ui_open = Library.KeybindFrame.Visible
+    
+    if Toggles.silent_aim_show_fov.Value and camera and camera.ViewportSize and not ui_open then
+        local origin_mode = Options.silent_aim_fov_origin.Value
+        local center = camera.ViewportSize / 2
+        if origin_mode == "mouse" then center = user_input_service:GetMouseLocation()
+        elseif origin_mode == "muzzle" then center = get_muzzle_screen_pos() or center end
+        
+        local base_radius = Options.silent_aim_fov.Value
+        local target_radius = Toggles.silent_aim_breathing_fov.Value and math.max(5, base_radius + math.sin(time() * 1.2) * (base_radius * 0.03)) or base_radius
+        fov_display_radius = fov_display_radius + (target_radius - fov_display_radius) * 0.25
+        
+        fov_circle.Position = center
+        fov_circle.Radius = fov_display_radius
+        fov_circle.Color = get_color3_from_option("silent_aim_fov_color")
+        fov_circle.Visible = true
+        
+        if Toggles.silent_aim_fov_glow.Value then ensure_fov_glow(fov_display_radius, center, "silent_aim_fov_color")
+        elseif fov_glow_image then fov_glow_image.Visible = false end
+    else
+        fov_circle.Visible = false
+        if fov_glow_image then fov_glow_image.Visible = false end
+    end
+
+    if Toggles.aimbot_show_fov.Value and camera and camera.ViewportSize and not ui_open then
+        local origin_mode = Options.aimbot_fov_origin.Value
+        local center = camera.ViewportSize / 2
+        if origin_mode == "mouse" then center = user_input_service:GetMouseLocation()
+        elseif origin_mode == "muzzle" then center = get_muzzle_screen_pos() or center end
+        
+        local base_radius = Options.aimbot_fov.Value
+        local target_radius = Toggles.aimbot_breathing_fov.Value and math.max(5, base_radius + math.sin(time() * 1.2) * (base_radius * 0.03)) or base_radius
+        aimbot_fov_display_radius = aimbot_fov_display_radius + (target_radius - aimbot_fov_display_radius) * 0.25
+        
+        aimbot_fov_circle.Position = center
+        aimbot_fov_circle.Radius = aimbot_fov_display_radius
+        aimbot_fov_circle.Color = get_color3_from_option("aimbot_fov_color")
+        aimbot_fov_circle.Filled = Toggles.aimbot_fov_glow.Value
+        aimbot_fov_circle.Transparency = Toggles.aimbot_fov_glow.Value and 0.6 or 1
+        aimbot_fov_circle.Visible = true
+    else
+        aimbot_fov_circle.Visible = false
+    end
+end)
+
+Toggles.silent_aim_fov_glow:OnChanged(function() if not Toggles.silent_aim_fov_glow.Value then destroy_fov_glow() end end)
+
+local stored_recoil_values, stored_firerate_values, stored_reloadtime_values = {}, {}, {}
+local hook_verified, hook_check_complete = false, false
+
+local function getAllTools2()
+    local tools = {}
+    if local_player and local_player.Character then
+        for _, tool in pairs(local_player.Character:GetChildren()) do
+            if tool:IsA("Tool") then table.insert(tools, tool) end
+        end
+    end
+    local backpack = local_player and local_player:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in pairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then table.insert(tools, tool) end
+        end
+    end
+    return tools
+end
+
+local original_gun_framework_new = gun_framework.new
+if original_gun_framework_new then
+    gun_framework.new = function(gun_model)
+        local configuration = gun_model and gun_model:FindFirstChild("Configuration")
+        local recoil_value = configuration and configuration:FindFirstChild("Recoil")
+        local firerate_value = configuration and configuration:FindFirstChild("FireRate")
+        local reloadtime_value = configuration and configuration:FindFirstChild("reloadTime")
+        
+        local rm = Options.recoil_multiplier.Value
+        if rm ~= 1.0 and recoil_value and recoil_value:IsA("Vector3Value") then
+            if not stored_recoil_values[gun_model] then stored_recoil_values[gun_model] = recoil_value.Value end
+            recoil_value.Value = stored_recoil_values[gun_model] * rm
+        elseif recoil_value and recoil_value:IsA("Vector3Value") then
+            if not stored_recoil_values[gun_model] then stored_recoil_values[gun_model] = recoil_value.Value end
+        end
+        
+        local fm = Options.firerate_multiplier.Value
+        if fm ~= 1.0 and firerate_value and firerate_value:IsA("NumberValue") then
+            if not stored_firerate_values[gun_model] then stored_firerate_values[gun_model] = firerate_value.Value end
+            firerate_value.Value = stored_firerate_values[gun_model] / fm
+        elseif firerate_value and firerate_value:IsA("NumberValue") then
+            if not stored_firerate_values[gun_model] then stored_firerate_values[gun_model] = firerate_value.Value end
+        end
+
+        local rtm = Options.reloadtime_multiplier.Value
+        if rtm ~= 1.0 and reloadtime_value and reloadtime_value:IsA("NumberValue") then
+            if not stored_reloadtime_values[gun_model] then stored_reloadtime_values[gun_model] = reloadtime_value.Value end
+            reloadtime_value.Value = stored_reloadtime_values[gun_model] / rtm
+        elseif reloadtime_value and reloadtime_value:IsA("NumberValue") then
+            if not stored_reloadtime_values[gun_model] then stored_reloadtime_values[gun_model] = reloadtime_value.Value end
+        end
+        
+        local result = original_gun_framework_new(gun_model)
+        local check_firerate = configuration and configuration:FindFirstChild("FireRate")
+        if check_firerate and check_firerate:IsA("NumberValue") then hook_verified = true end
+        return result
+    end
+end
+
+local function apply_gun_mods_to_tools()
+    local rm, fm, rtm = Options.recoil_multiplier.Value, Options.firerate_multiplier.Value, Options.reloadtime_multiplier.Value
+    for _, tool in pairs(getAllTools2()) do
+        local configuration = tool:FindFirstChild("Configuration")
+        if not configuration then continue end
+        
+        local reloadtime_value = configuration:FindFirstChild("reloadTime")
+        if rtm ~= 1.0 and reloadtime_value and reloadtime_value:IsA("NumberValue") then
+            if not stored_reloadtime_values[tool] then stored_reloadtime_values[tool] = reloadtime_value.Value end
+            reloadtime_value.Value = stored_reloadtime_values[tool] / rtm
+        elseif stored_reloadtime_values[tool] and reloadtime_value and reloadtime_value:IsA("NumberValue") then
+            reloadtime_value.Value = stored_reloadtime_values[tool]
+        end
+        
+        local firerate_value = configuration:FindFirstChild("FireRate")
+        if fm ~= 1.0 and firerate_value and firerate_value:IsA("NumberValue") then
+            if not stored_firerate_values[tool] then stored_firerate_values[tool] = firerate_value.Value end
+            firerate_value.Value = stored_firerate_values[tool] / fm
+        elseif stored_firerate_values[tool] and firerate_value and firerate_value:IsA("NumberValue") then
+            firerate_value.Value = stored_firerate_values[tool]
+        end
+        
+        local recoil_value = configuration:FindFirstChild("Recoil")
+        if rm ~= 1.0 and recoil_value and recoil_value:IsA("Vector3Value") then
+            if not stored_recoil_values[tool] then stored_recoil_values[tool] = recoil_value.Value end
+            recoil_value.Value = stored_recoil_values[tool] * rm
+        elseif stored_recoil_values[tool] and recoil_value and recoil_value:IsA("Vector3Value") then
+            recoil_value.Value = stored_recoil_values[tool]
+        end
+    end
+end
+
+run_service.Heartbeat:Connect(apply_gun_mods_to_tools)
+Options.recoil_multiplier:OnChanged(apply_gun_mods_to_tools)
+Options.firerate_multiplier:OnChanged(apply_gun_mods_to_tools)
+Options.reloadtime_multiplier:OnChanged(apply_gun_mods_to_tools)
+
+local_player.CharacterAdded:Connect(function(character)
+    task.wait(0.5) apply_gun_mods_to_tools()
+    character.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then task.wait(0.1); apply_gun_mods_to_tools() end
+    end)
+end)
+
+-- ========================================================================= --
+-- [UI] TAB VISUALS
+-- ========================================================================= --
+local VisualsTab = Tabs.Visuals
+local EspBox = VisualsTab:AddLeftGroupbox("ESP & Chams")
+
+EspBox:AddSlider("chams_distance", { Text = "Max Distance", Default = 400, Min = 0, Max = 2000, Rounding = 0 })
+
+EspBox:AddToggle("chams_enabled", { Text = "Chams", Default = false }):AddColorPicker("chams_color", { Default = Color3.fromRGB(200, 200, 200) })
+EspBox:AddToggle("chams_enabled_invisible", { Text = "Invis Chams", Default = false }):AddColorPicker("chams_invisible_color", { Default = Color3.fromRGB(0, 0, 0) })
+EspBox:AddToggle("box_esp_enabled", { Text = "Boxes", Default = false }):AddColorPicker("box_esp_color", { Default = Color3.fromRGB(200, 200, 200) })
+
+EspBox:AddToggle("esp_visible_only", { Text = "Visible Only", Default = false })
+EspBox:AddToggle("forcefield_check", { Text = "Forcefield Check", Default = false })
+
+EspBox:AddToggle("tracers_enabled", { Text = "Tracers", Default = false }):AddColorPicker("tracer_esp_color", { Default = Color3.fromRGB(200, 200, 200) })
+
+local TracerSettings = VisualsTab:AddLeftGroupbox("Tracer Settings")
+TracerSettings:AddToggle("tracer_follow_mouse", { Text = "Tracers Follow Mouse", Default = false })
+TracerSettings:AddDropdown("tracer_origin", { Values = {"top", "middle", "bottom"}, Default = 3, Text = "Tracer Origin" })
+Options.tracer_origin:SetValue("bottom")
+
+local TextEspBox = VisualsTab:AddRightGroupbox("Text ESP")
+TextEspBox:AddToggle("name_esp_enabled", { Text = "Names", Default = false }):AddColorPicker("name_esp_color", { Default = Color3.fromRGB(255, 255, 255) })
+TextEspBox:AddToggle("distance_esp_enabled", { Text = "Distance", Default = false }):AddColorPicker("distance_esp_color", { Default = Color3.fromRGB(255, 255, 255) })
+TextEspBox:AddToggle("healthbar_enabled", { Text = "Health Bar", Default = false })
+
+-- ========================================================================= --
+-- [LOGIC] ESP & CHAMS CORE
+-- ========================================================================= --
+local chams_quads = {}
+local chams_connections = {}
+local chams_global_connection = nil
+
+local function safe_disconnect(conn)
+    if conn and typeof(conn) == "RBXScriptConnection" then pcall(function() conn:Disconnect() end) end
+end
+
+local function safe_remove_drawing(obj)
+    if obj and obj.Remove then pcall(function() obj.Visible = false obj:Remove() end) end
+end
+
+local function has_forcefield(player)
+    if not Toggles.forcefield_check.Value then return false end
+    local character = player and player.Character
+    if not character then return false end
+    return character:FindFirstChild("INV", true) ~= nil
+end
+
+local function NewQuad(color)
+    local quad = Drawing.new("Quad")
+    quad.Visible = false; quad.ZIndex = -5
+    quad.PointA = Vector2.new(0, 0); quad.PointB = Vector2.new(0, 0); quad.PointC = Vector2.new(0, 0); quad.PointD = Vector2.new(0, 0)
+    quad.Color = color; quad.Filled = true; quad.Thickness = 1; quad.Transparency = 0.25
+    return quad
+end
+
+local function ColorizeQuads(color, quads)
+    for _, quad in pairs(quads) do if quad and quad.Color then quad.Color = color end end
+end
+
+local function RemoveChams(player)
+    if not player then return end
+    if chams_quads[player] then
+        for part, quads in pairs(chams_quads[player]) do
+            if quads then for _, quad in pairs(quads) do safe_remove_drawing(quad) end end
+        end
+        chams_quads[player] = nil
+    end
+    if chams_connections[player] then
+        for part, connection in pairs(chams_connections[player]) do safe_disconnect(connection) end
+        chams_connections[player] = nil
+    end
+end
+
+local function RemoveAllChams()
+    if chams_global_connection then chams_global_connection:Disconnect() chams_global_connection = nil end
+    for player, _ in pairs(chams_quads) do RemoveChams(player) end
+    for player, connection in pairs(chams_connections) do safe_disconnect(connection) end
+    chams_quads, chams_connections = {}, {}
+end
+
+local function ESP_Chams(part_obj, player)
+    if not part_obj or not player then return end
+    local part_name = part_obj.Name
+    local default_chams_color = get_color3_from_option("chams_color")
+    
+    if not chams_quads[player] then chams_quads[player] = {} end
+    if chams_quads[player][part_obj] then return end
+    
+    local quads = {
+        quad1 = NewQuad(default_chams_color), quad2 = NewQuad(default_chams_color),
+        quad3 = NewQuad(default_chams_color), quad4 = NewQuad(default_chams_color),
+        quad5 = NewQuad(default_chams_color), quad6 = NewQuad(default_chams_color)
+    }
+    chams_quads[player][part_obj] = quads
+    
+    local function setQuadsVisible(visible)
+        for _, quad in pairs(quads) do if quad then quad.Visible = visible end end
+    end
+    
+    local connection
+    connection = run_service.RenderStepped:Connect(function()
+        if not Toggles.chams_enabled.Value or Library.KeybindFrame.Visible then setQuadsVisible(false) return end
+        local character = player.Character
+        if not character or not character.Parent then setQuadsVisible(false) return end
+        local humanoid = character:FindFirstChild("Humanoid")
+        local humanoid_root_part = character:FindFirstChild("HumanoidRootPart")
+        if not humanoid or not humanoid_root_part or humanoid.Health <= 0 then setQuadsVisible(false) return end
+        if has_forcefield(player) then setQuadsVisible(false) return end
+        
+        local current_part = character:FindFirstChild(part_name)
+        if not current_part then setQuadsVisible(false) return end
+        
+        local distance = (humanoid_root_part.Position - camera.CFrame.Position).Magnitude
+        if distance > Options.chams_distance.Value or not camera or not camera.CFrame then setQuadsVisible(false) return end
+        
+        local partpos, onscreen = camera:WorldToViewportPoint(current_part.Position)
+        if not onscreen then setQuadsVisible(false) return end
+        
+        local is_visible = raycast_wallcheck(camera.CFrame.Position, current_part.Position, character)
+        if Toggles.esp_visible_only.Value and not is_visible then setQuadsVisible(false) return end
+        
+        local size_X, size_Y, size_Z = current_part.Size.X / 2, current_part.Size.Y / 2, current_part.Size.Z / 2
+        local part_cframe = current_part.CFrame
+        
+        local Top1 = camera:WorldToViewportPoint((part_cframe * CFrame.new(-size_X, size_Y, -size_Z)).p)
+        local Top2 = camera:WorldToViewportPoint((part_cframe * CFrame.new(-size_X, size_Y, size_Z)).p)
+        local Top3 = camera:WorldToViewportPoint((part_cframe * CFrame.new(size_X, size_Y, size_Z)).p)
+        local Top4 = camera:WorldToViewportPoint((part_cframe * CFrame.new(size_X, size_Y, -size_Z)).p)
+        
+        local Bottom1 = camera:WorldToViewportPoint((part_cframe * CFrame.new(-size_X, -size_Y, -size_Z)).p)
+        local Bottom2 = camera:WorldToViewportPoint((part_cframe * CFrame.new(-size_X, -size_Y, size_Z)).p)
+        local Bottom3 = camera:WorldToViewportPoint((part_cframe * CFrame.new(size_X, -size_Y, size_Z)).p)
+        local Bottom4 = camera:WorldToViewportPoint((part_cframe * CFrame.new(size_X, -size_Y, -size_Z)).p)
+        
+        quads.quad1.PointA = Vector2.new(Top1.X, Top1.Y); quads.quad1.PointB = Vector2.new(Top2.X, Top2.Y); quads.quad1.PointC = Vector2.new(Top3.X, Top3.Y); quads.quad1.PointD = Vector2.new(Top4.X, Top4.Y)
+        quads.quad2.PointA = Vector2.new(Bottom1.X, Bottom1.Y); quads.quad2.PointB = Vector2.new(Bottom2.X, Bottom2.Y); quads.quad2.PointC = Vector2.new(Bottom3.X, Bottom3.Y); quads.quad2.PointD = Vector2.new(Bottom4.X, Bottom4.Y)
+        quads.quad3.PointA = Vector2.new(Top1.X, Top1.Y); quads.quad3.PointB = Vector2.new(Top2.X, Top2.Y); quads.quad3.PointC = Vector2.new(Bottom2.X, Bottom2.Y); quads.quad3.PointD = Vector2.new(Bottom1.X, Bottom1.Y)
+        quads.quad4.PointA = Vector2.new(Top2.X, Top2.Y); quads.quad4.PointB = Vector2.new(Top3.X, Top3.Y); quads.quad4.PointC = Vector2.new(Bottom3.X, Bottom3.Y); quads.quad4.PointD = Vector2.new(Bottom2.X, Bottom2.Y)
+        quads.quad5.PointA = Vector2.new(Top3.X, Top3.Y); quads.quad5.PointB = Vector2.new(Top4.X, Top4.Y); quads.quad5.PointC = Vector2.new(Bottom4.X, Bottom4.Y); quads.quad5.PointD = Vector2.new(Bottom3.X, Bottom3.Y)
+        quads.quad6.PointA = Vector2.new(Top4.X, Top4.Y); quads.quad6.PointB = Vector2.new(Top1.X, Top1.Y); quads.quad6.PointC = Vector2.new(Bottom1.X, Bottom1.Y); quads.quad6.PointD = Vector2.new(Bottom4.X, Bottom4.Y)
+        
+        local current_color = get_color3_from_option("chams_color")
+        if not is_visible and Toggles.chams_enabled_invisible.Value then current_color = get_color3_from_option("chams_invisible_color") end
+        
+        ColorizeQuads(current_color, quads)
+        setQuadsVisible(true)
+        
+        if not players:FindFirstChild(player.Name) then safe_disconnect(connection) RemoveChams(player) return end
+    end)
+    if not chams_connections[player] then chams_connections[player] = {} end
+    chams_connections[player][part_obj] = connection
+end
+
+local function SetupChamsTarget(player)
+    if player == local_player or not player or not player.Parent then return end
+    RemoveChams(player)
+    task.spawn(function()
+        if not player.Character then player.CharacterAdded:Wait() end
+        if not player or not player.Parent then return end
+        repeat task.wait(0.1); if not player or not player.Parent then return end
+        until player.Character and player.Character:FindFirstChild("Humanoid") and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.Humanoid.Health > 0 and player.Character:FindFirstChild("Head")
+        
+        if not Toggles.chams_enabled.Value or not player or not player.Parent or not player.Character then return end
+        
+        for _, part in pairs(player.Character:GetChildren()) do
+            if part:IsA("MeshPart") or part.Name == "Head" or part.Name == "Left Arm" or part.Name == "Right Arm" or part.Name == "Right Leg" or part.Name == "Left Leg" or part.Name == "Torso" then
+                ESP_Chams(part, player)
+            end
+        end
+        
+        player.Character.ChildAdded:Connect(function(child)
+            if child:IsA("MeshPart") or child.Name == "Head" or child.Name == "Left Arm" or child.Name == "Right Arm" or child.Name == "Right Leg" or child.Name == "Left Leg" or child.Name == "Torso" then
+                ESP_Chams(child, player)
+            end
+        end)
+    end)
+end
+
+Toggles.chams_enabled:OnChanged(function()
+    local bool = Toggles.chams_enabled.Value
+    for player, quads_table in pairs(chams_quads) do
+        if quads_table then
+            for part, quads in pairs(quads_table) do
+                if quads then for _, quad in pairs(quads) do if quad then quad.Visible = false end end end
+            end
+        end
+    end
+    
+    if bool then
+        for _, player in pairs(players:GetPlayers()) do
+            if player ~= local_player and player.Parent then
+                SetupChamsTarget(player)
+                if not chams_connections[player] or not chams_connections[player].character then
+                    if not chams_connections[player] then chams_connections[player] = {} end
+                    chams_connections[player].character = player.CharacterAdded:Connect(function(character)
+                        if not player or not player.Parent or player == local_player then return end
+                        if Toggles.chams_enabled.Value then RemoveChams(player) task.wait(0.1) SetupChamsTarget(player) end
+                    end)
+                end
+            end
+        end
+    else
+        RemoveAllChams()
+    end
+end)
+
+local function NewESPQuad2(thickness, color)
+    local quad = Drawing.new("Quad")
+    quad.Visible = false; quad.Color = color; quad.Filled = false; quad.Thickness = thickness; quad.Transparency = 1
+    return quad
+end
+
+local function NewESPLine(thickness, color)
+    local line = Drawing.new("Line")
+    line.Visible = false; line.Color = color; line.Thickness = thickness; line.Transparency = 1
+    return line
+end
+
+local function NewESPText(text, size, color)
+    local text_drawing = Drawing.new("Text")
+    text_drawing.Visible = false; text_drawing.Text = text; text_drawing.Size = size
+    text_drawing.Color = color or Color3.fromRGB(255, 255, 255); text_drawing.Transparency = 1
+    text_drawing.Outline = true; text_drawing.OutlineColor = Color3.fromRGB(0, 0, 0); text_drawing.Center = true
+    return text_drawing
+end
+
+local esp_libraries = {} 
+local esp_connections = {} 
+local esp_character_connections = {} 
+
+local function RemoveESP(player)
+    if not player then return end
+    if esp_connections[player] then pcall(function() esp_connections[player]:Disconnect() end) esp_connections[player] = nil end
+    if esp_character_connections[player] then pcall(function() esp_character_connections[player]:Disconnect() end) esp_character_connections[player] = nil end
+    local lib = esp_libraries[player]
+    if lib then
+        esp_libraries[player] = nil
+        for _, obj in pairs(lib) do if obj then pcall(function() obj.Visible = false obj:Remove() end) end end
+    end
+end
+
+local function HideAllESP()
+    for player, lib in pairs(esp_libraries) do
+        if lib then for _, obj in pairs(lib) do if obj then obj.Visible = false end end end
+    end
+end
+
+local function RemoveAllESP()
+    HideAllESP()
+    for player, _ in pairs(esp_libraries) do RemoveESP(player) end
+    for player, connection in pairs(esp_character_connections) do
+        if connection and typeof(connection) == "RBXScriptConnection" then pcall(function() connection:Disconnect() end) end
+    end
+    esp_libraries, esp_connections, esp_character_connections = {}, {}, {}
+end
+
+local function SetupESPTarget(player)
+    if player == local_player or not player or not player.Parent then return end
+    RemoveESP(player)
+    
+    if not Toggles.box_esp_enabled.Value and not Toggles.tracers_enabled.Value and not Toggles.healthbar_enabled.Value and not Toggles.name_esp_enabled.Value and not Toggles.distance_esp_enabled.Value then return end
+    
+    local black = Color3.fromRGB(0, 0, 0)
+    local lib = {
+        blacktracer = Toggles.tracers_enabled.Value and NewESPLine(2, black) or nil,
+        tracer = Toggles.tracers_enabled.Value and NewESPLine(1, get_color3_from_option("tracer_esp_color")) or nil,
+        black = Toggles.box_esp_enabled.Value and NewESPQuad2(2, black) or nil,
+        box = Toggles.box_esp_enabled.Value and NewESPQuad2(1, get_color3_from_option("box_esp_color")) or nil,
+        healthbar = Toggles.healthbar_enabled.Value and NewESPLine(3, black) or nil,
+        greenhealth = Toggles.healthbar_enabled.Value and NewESPLine(1.5, black) or nil,
+        nametext = Toggles.name_esp_enabled.Value and NewESPText("", 14, get_color3_from_option("name_esp_color")) or nil,
+        distancetext = Toggles.distance_esp_enabled.Value and NewESPText("", 14, get_color3_from_option("distance_esp_color")) or nil
+    }
+    esp_libraries[player] = lib
+    
+    local connection
+    connection = run_service.RenderStepped:Connect(function()
+        if not player or not player.Parent or not players:FindFirstChild(player.Name) then pcall(function() connection:Disconnect() end) RemoveESP(player) return end
+        if Library.KeybindFrame.Visible then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        
+        if not Toggles.box_esp_enabled.Value and not Toggles.tracers_enabled.Value and not Toggles.healthbar_enabled.Value and not Toggles.name_esp_enabled.Value and not Toggles.distance_esp_enabled.Value then
+            for _, d in pairs(lib) do if d then d.Visible = false end end return
+        end
+        
+        local character = player.Character
+        if not character then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        
+        local humanoid, humanoid_root_part, head = character:FindFirstChild("Humanoid"), character:FindFirstChild("HumanoidRootPart"), character:FindFirstChild("Head")
+        if not humanoid or not humanoid_root_part or not head or humanoid.Health <= 0 then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        if has_forcefield(player) then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        
+        local hum_pos, on_screen = camera:WorldToViewportPoint(humanoid_root_part.Position)
+        if not on_screen then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        
+        local head_pos = camera:WorldToViewportPoint(head.Position)
+        local distance_y = math.clamp((Vector2.new(head_pos.X, head_pos.Y) - Vector2.new(hum_pos.X, hum_pos.Y)).Magnitude, 2, math.huge)
+        local distance_from_cam = (humanoid_root_part.Position - camera.CFrame.Position).Magnitude
+        
+        if distance_from_cam > Options.chams_distance.Value then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        if Toggles.esp_visible_only.Value and not raycast_wallcheck(camera.CFrame.Position, head.Position, character) then for _, d in pairs(lib) do if d then d.Visible = false end end return end
+        
+        if Toggles.box_esp_enabled.Value and lib.box and lib.black then
+            local function Size(item)
+                item.PointA = Vector2.new(hum_pos.X + distance_y, hum_pos.Y - distance_y * 2)
+                item.PointB = Vector2.new(hum_pos.X - distance_y, hum_pos.Y - distance_y * 2)
+                item.PointC = Vector2.new(hum_pos.X - distance_y, hum_pos.Y + distance_y * 2)
+                item.PointD = Vector2.new(hum_pos.X + distance_y, hum_pos.Y + distance_y * 2)
+            end
+            Size(lib.box); Size(lib.black)
+            lib.box.Color = get_color3_from_option("box_esp_color"); lib.box.Visible = true; lib.black.Visible = true
+        else if lib.box then lib.box.Visible = false lib.black.Visible = false end end
+        
+        if Toggles.tracers_enabled.Value and lib.tracer and lib.blacktracer then
+            local org = Options.tracer_origin.Value == "bottom" and Vector2.new(camera.ViewportSize.X * 0.5, camera.ViewportSize.Y) or (Options.tracer_origin.Value == "middle" and camera.ViewportSize * 0.5 or Vector2.new(camera.ViewportSize.X * 0.5, 0))
+            if Toggles.tracer_follow_mouse.Value then org = user_input_service:GetMouseLocation() end
+            lib.tracer.From = org; lib.blacktracer.From = org
+            lib.tracer.To = Vector2.new(hum_pos.X, hum_pos.Y + distance_y * 2); lib.blacktracer.To = lib.tracer.To
+            lib.tracer.Color = get_color3_from_option("tracer_esp_color"); lib.tracer.Visible = true; lib.blacktracer.Visible = true
+        else if lib.tracer then lib.tracer.Visible = false lib.blacktracer.Visible = false end end
+        
+        if Toggles.healthbar_enabled.Value and lib.healthbar and lib.greenhealth then
+            local d = (Vector2.new(hum_pos.X - distance_y, hum_pos.Y - distance_y * 2) - Vector2.new(hum_pos.X - distance_y, hum_pos.Y + distance_y * 2)).Magnitude
+            local health_offset = humanoid.Health / humanoid.MaxHealth * d
+            lib.greenhealth.From = Vector2.new(hum_pos.X - distance_y - 4, hum_pos.Y + distance_y * 2)
+            lib.greenhealth.To = Vector2.new(hum_pos.X - distance_y - 4, hum_pos.Y + distance_y * 2 - health_offset)
+            lib.healthbar.From = Vector2.new(hum_pos.X - distance_y - 4, hum_pos.Y + distance_y * 2)
+            lib.healthbar.To = Vector2.new(hum_pos.X - distance_y - 4, hum_pos.Y - distance_y * 2)
+            lib.greenhealth.Color = Color3.fromRGB(255, 0, 0):Lerp(Color3.fromRGB(0, 255, 0), humanoid.Health / humanoid.MaxHealth)
+            lib.healthbar.Visible = true; lib.greenhealth.Visible = true
+        else if lib.healthbar then lib.healthbar.Visible = false lib.greenhealth.Visible = false end end
+        
+        if Toggles.name_esp_enabled.Value and lib.nametext then
+            lib.nametext.Text = player.DisplayName or player.Name
+            lib.nametext.Size = math.max(8, math.min(14, distance_y * 0.5))
+            lib.nametext.Color = get_color3_from_option("name_esp_color")
+            lib.nametext.Position = Vector2.new(hum_pos.X, hum_pos.Y - distance_y * 2 - 5)
+            lib.nametext.Visible = true
+        else if lib.nametext then lib.nametext.Visible = false end end
+        
+        if Toggles.distance_esp_enabled.Value and lib.distancetext then
+            lib.distancetext.Text = tostring(math.floor(distance_from_cam)) .. "st"
+            lib.distancetext.Size = math.max(8, math.min(14, distance_y * 0.5))
+            lib.distancetext.Color = get_color3_from_option("distance_esp_color")
+            lib.distancetext.Position = Vector2.new(hum_pos.X, hum_pos.Y + distance_y * 2 + 5)
+            lib.distancetext.Visible = true
+        else if lib.distancetext then lib.distancetext.Visible = false end end
+    end)
+    esp_connections[player] = connection
+    
+    if not esp_character_connections[player] then
+        esp_character_connections[player] = player.CharacterAdded:Connect(function(character)
+            if not player or not player.Parent or player == local_player then return end
+            task.wait(0.1)
+            if Toggles.box_esp_enabled.Value or Toggles.tracers_enabled.Value or Toggles.healthbar_enabled.Value or Toggles.name_esp_enabled.Value or Toggles.distance_esp_enabled.Value then
+                RemoveESP(player)
+                task.wait(0.1)
+                SetupESPTarget(player)
+            end
+        end)
+    end
+end
+
+local function handle_esp_update()
+    local bool = Toggles.box_esp_enabled.Value or Toggles.tracers_enabled.Value or Toggles.healthbar_enabled.Value or Toggles.name_esp_enabled.Value or Toggles.distance_esp_enabled.Value
+    for player, lib in pairs(esp_libraries) do
+        if lib then
+            if lib.box then lib.box.Visible = false pcall(function() lib.box:Remove() end) end
+            if lib.black then lib.black.Visible = false pcall(function() lib.black:Remove() end) end
+            if lib.tracer then lib.tracer.Visible = false pcall(function() lib.tracer:Remove() end) end
+            if lib.blacktracer then lib.blacktracer.Visible = false pcall(function() lib.blacktracer:Remove() end) end
+            if lib.healthbar then lib.healthbar.Visible = false pcall(function() lib.healthbar:Remove() end) end
+            if lib.greenhealth then lib.greenhealth.Visible = false pcall(function() lib.greenhealth:Remove() end) end
+            if lib.nametext then lib.nametext.Visible = false pcall(function() lib.nametext:Remove() end) end
+            if lib.distancetext then lib.distancetext.Visible = false pcall(function() lib.distancetext:Remove() end) end
+        end
+    end
+    for _, player in pairs(players:GetPlayers()) do
+        if player ~= local_player and player.Parent then
+            if bool then SetupESPTarget(player) else RemoveESP(player) end
+        end
+    end
+end
+
+Toggles.box_esp_enabled:OnChanged(handle_esp_update)
+Toggles.name_esp_enabled:OnChanged(handle_esp_update)
+Toggles.distance_esp_enabled:OnChanged(handle_esp_update)
+Toggles.healthbar_enabled:OnChanged(handle_esp_update)
+Toggles.tracers_enabled:OnChanged(handle_esp_update)
+
+players.PlayerAdded:Connect(function(player)
+    if player == local_player then return end
+    if Toggles.chams_enabled.Value then
+        SetupChamsTarget(player)
+        if not chams_connections[player] or not chams_connections[player].character then
+            if not chams_connections[player] then chams_connections[player] = {} end
+            chams_connections[player].character = player.CharacterAdded:Connect(function(character)
+                if not player or not player.Parent or player == local_player then return end
+                if Toggles.chams_enabled.Value then
+                    RemoveChams(player)
+                    task.wait(0.1)
+                    SetupChamsTarget(player)
+                end
+            end)
+        end
+    end
+    if Toggles.box_esp_enabled.Value or Toggles.tracers_enabled.Value or Toggles.healthbar_enabled.Value or Toggles.name_esp_enabled.Value or Toggles.distance_esp_enabled.Value then
+        SetupESPTarget(player)
+    end
+end)
+
+players.PlayerRemoving:Connect(function(player)
+    RemoveChams(player)
+    RemoveESP(player)
+end)
+-- ========================================================================= --
+-- [UI & LOGIC] PHẦN 3: MATERIALS (WEAPON, ARM, SELF)
+-- ========================================================================= --
+
+local material_options = {
+    "Plastic", "Neon", "Metal", "Wood", "Glass", "ForceField", "Concrete", 
+    "CorrodedMetal", "DiamondPlate", "Fabric", "Granite", "Grass", "Ice", 
+    "Marble", "Pebble", "Slate", "SmoothPlastic", "Sand", "Brick"
+}
+
+local material_enum_map = {
+    Plastic = Enum.Material.Plastic, Neon = Enum.Material.Neon, Metal = Enum.Material.Metal,
+    Wood = Enum.Material.Wood, Glass = Enum.Material.Glass, ForceField = Enum.Material.ForceField,
+    Concrete = Enum.Material.Concrete, CorrodedMetal = Enum.Material.CorrodedMetal, DiamondPlate = Enum.Material.DiamondPlate,
+    Fabric = Enum.Material.Fabric, Granite = Enum.Material.Granite, Grass = Enum.Material.Grass,
+    Ice = Enum.Material.Ice, Marble = Enum.Material.Marble, Pebble = Enum.Material.Pebble,
+    Slate = Enum.Material.Slate, SmoothPlastic = Enum.Material.SmoothPlastic, Sand = Enum.Material.Sand,
+    Brick = Enum.Material.Brick,
+}
+
+local MaterialBox = Tabs.Visuals:AddRightGroupbox("Materials")
+
+-- 1. WEAPON MATERIAL
+MaterialBox:AddToggle("weapon_material_enabled", { Text = "Weapon Material", Default = false })
+    :AddColorPicker("weapon_material_color", { Default = Color3.fromRGB(200, 200, 200) })
+MaterialBox:AddDropdown("weapon_material", { Values = material_options, Default = 2, Text = "Material Type" })
+MaterialBox:AddSlider("weapon_scale", { Text = "Weapon Size", Default = 1, Min = 0.1, Max = 2, Rounding = 2 })
+
+local weapon_original_sizes = {}
+
+local function update_weapon_material()
+    if not Toggles.weapon_material_enabled.Value then return end
+    
+    local imafedyou = workspace:FindFirstChild("imafedyou")
+    if not imafedyou then return end
+    
+    local weapon_color = get_color3_from_option("weapon_material_color")
+    local weapon_scale = Options.weapon_scale.Value or 1
+    
+    for _, gun_skin in ipairs(imafedyou:GetChildren()) do
+        local model = gun_skin:FindFirstChild("Model")
+        if model then
+            local union = model:FindFirstChild("Union")
+            if union and union:IsA("UnionOperation") then
+                if not weapon_original_sizes[union] then
+                    weapon_original_sizes[union] = union.Size
+                end
+                
+                local material_name = Options.weapon_material.Value or "Neon"
+                local material_enum = material_enum_map[material_name] or Enum.Material.Neon
+                union.Material = material_enum
+                union.Color = weapon_color
+                union.Size = weapon_original_sizes[union] * weapon_scale
+            end
+        end
+    end
+end
+
+Toggles.weapon_material_enabled:OnChanged(update_weapon_material)
+Options.weapon_material:OnChanged(function() if Toggles.weapon_material_enabled.Value then update_weapon_material() end end)
+Options.weapon_scale:OnChanged(function() if Toggles.weapon_material_enabled.Value then update_weapon_material() end end)
+Options.weapon_material_color:OnChanged(function()
+    if Toggles.weapon_material_enabled.Value then update_weapon_material() end
+    if Toggles.arm_material_enabled.Value then update_arms() end
+end)
+
+run_service.RenderStepped:Connect(function()
+    if Toggles.weapon_material_enabled.Value then update_weapon_material() end
+end)
+
+-- 2. ARM MATERIAL
+MaterialBox:AddDivider()
+MaterialBox:AddToggle("arm_material_enabled", { Text = "Arm Material", Default = false })
+    :AddColorPicker("arm_material_color", { Default = Color3.fromRGB(200, 200, 200) })
+MaterialBox:AddDropdown("arm_material", { Values = material_options, Default = 2, Text = "Material Type" })
+MaterialBox:AddToggle("hide_arms", { Text = "Hide Arms", Default = false })
+
+local arm_original_sizes = {}
+local viewmodel_initialized = false
+
+local function get_viewmodel() return workspace:FindFirstChild("ViewModel") end
+
+function update_arms()
+    if not viewmodel_initialized then return end
+    
+    local vm = get_viewmodel()
+    if not vm then return end
+    
+    local left_arm = vm:FindFirstChild("Left Arm")
+    local right_arm = vm:FindFirstChild("Right Arm")
+    if not left_arm or not right_arm then return end
+    
+    local weapon_scale = Options.weapon_scale.Value or 1
+    
+    if not arm_original_sizes[left_arm] then arm_original_sizes[left_arm] = left_arm.Size end
+    if not arm_original_sizes[right_arm] then arm_original_sizes[right_arm] = right_arm.Size end
+    
+    if Toggles.weapon_material_enabled.Value then
+        left_arm.Size = arm_original_sizes[left_arm] * weapon_scale
+        right_arm.Size = arm_original_sizes[right_arm] * weapon_scale
+    else
+        left_arm.Size = arm_original_sizes[left_arm]
+        right_arm.Size = arm_original_sizes[right_arm]
+    end
+    
+    if Toggles.hide_arms.Value then
+        left_arm.Transparency = 1
+        right_arm.Transparency = 1
+    elseif Toggles.arm_material_enabled.Value then
+        left_arm.Transparency = 0
+        right_arm.Transparency = 0
+        
+        local material_name = Options.arm_material.Value or "Neon"
+        local material_enum = material_enum_map[material_name] or Enum.Material.Neon
+        
+        local arm_color = nil
+        if Toggles.weapon_material_enabled.Value then
+            arm_color = get_color3_from_option("weapon_material_color")
+        else
+            arm_color = get_color3_from_option("arm_material_color")
+        end
+        
+        for _, part in ipairs({left_arm, right_arm}) do
+            if part:IsA("BasePart") then
+                part.Material = material_enum
+                if arm_color then part.Color = arm_color end
+            end
+        end
+    else
+        left_arm.Transparency = 0
+        right_arm.Transparency = 0
+    end
+end
+
+Toggles.arm_material_enabled:OnChanged(update_arms)
+Options.arm_material_color:OnChanged(function() if Toggles.arm_material_enabled.Value then update_arms() end end)
+Options.arm_material:OnChanged(function() if Toggles.arm_material_enabled.Value then update_arms() end end)
+Toggles.hide_arms:OnChanged(update_arms)
+
+local viewmodel_check_connection = nil
+local connections_setup = false
+
+viewmodel_check_connection = run_service.Heartbeat:Connect(function()
+    if connections_setup then return end
+    local vm = get_viewmodel()
+    if not vm then return end
+
+    viewmodel_initialized = true
+    connections_setup = true
+        
+    vm.ChildAdded:Connect(function(child)
+        if child.Name == "Left Arm" or child.Name == "Right Arm" then update_arms() end
+    end)
+
+    run_service.RenderStepped:Connect(function()
+        if Toggles.arm_material_enabled.Value or Toggles.hide_arms.Value or Toggles.weapon_material_enabled.Value then
+            update_arms()
+        end
+    end)
+        
+    if viewmodel_check_connection then
+        viewmodel_check_connection:Disconnect()
+        viewmodel_check_connection = nil
+    end
+end)
+
+-- 3. SELF MATERIAL
+MaterialBox:AddDivider()
+MaterialBox:AddToggle("self_material_enabled", { Text = "Self Material", Default = false })
+MaterialBox:AddDropdown("self_material_choice", { Values = material_options, Default = 6, Text = "Material Type" })
+MaterialBox:AddSlider("self_material_transparency", { Text = "Transparency", Default = 0, Min = 0, Max = 1, Rounding = 2 })
+
+local self_material_originals = {}
+local self_material_char_conn = nil
+
+local function is_part_of_tool(desc)
+    local parent = desc.Parent
+    while parent do
+        if parent:IsA("Tool") then return true end
+        parent = parent.Parent
+    end
+    return false
+end
+
+local function restore_self_material()
+    for part, data in pairs(self_material_originals) do
+        if part and part.Parent and data then
+            part.Material = data.Material
+            part.Transparency = data.Transparency
+        end
+    end
+    table.clear(self_material_originals)
+end
+
+local function apply_self_material()
+    if not Toggles.self_material_enabled.Value then return end
+    
+    local char = local_player and local_player.Character
+    if not char then return end
+    
+    local material_name = Options.self_material_choice.Value or "ForceField"
+    local material_enum = material_enum_map[material_name] or Enum.Material.ForceField
+    local transparency = math.clamp(Options.self_material_transparency.Value or 0, 0, 1)
+    
+    local allowed_parts = {
+        Head = true, Torso = true, ["UpperTorso"] = true, ["LowerTorso"] = true,
+        ["Left Arm"] = true, ["Right Arm"] = true, ["Left Leg"] = true, ["Right Leg"] = true,
+        ["LeftUpperArm"] = true, ["LeftLowerArm"] = true, ["LeftHand"] = true,
+        ["RightUpperArm"] = true, ["RightLowerArm"] = true, ["RightHand"] = true,
+        ["LeftUpperLeg"] = true, ["LeftLowerLeg"] = true, ["LeftFoot"] = true,
+        ["RightUpperLeg"] = true, ["RightLowerLeg"] = true, ["RightFoot"] = true,
+    }
+
+    for _, desc in ipairs(char:GetDescendants()) do
+        if desc:IsA("BasePart") and not is_part_of_tool(desc) and allowed_parts[desc.Name] then
+            if not self_material_originals[desc] then
+                self_material_originals[desc] = {
+                    Material = desc.Material,
+                    Transparency = desc.Transparency,
+                }
+            end
+            desc.Material = material_enum
+            desc.Transparency = transparency
+        end
+    end
+end
+
+Toggles.self_material_enabled:OnChanged(function()
+    if Toggles.self_material_enabled.Value then apply_self_material() else restore_self_material() end
+end)
+Options.self_material_choice:OnChanged(function() if Toggles.self_material_enabled.Value then apply_self_material() end end)
+Options.self_material_transparency:OnChanged(function() if Toggles.self_material_enabled.Value then apply_self_material() end end)
+
+local function bind_self_material()
+    if self_material_char_conn then
+        self_material_char_conn:Disconnect()
+        self_material_char_conn = nil
+    end
+    
+    if local_player then
+        if local_player.Character then
+            restore_self_material()
+            apply_self_material()
+        end
+        self_material_char_conn = local_player.CharacterAdded:Connect(function()
+            restore_self_material()
+            apply_self_material()
+        end)
+    end
+end
+
+bind_self_material()-- ========================================================================= --
+-- [UI & LOGIC] PHẦN 3: MATERIALS (WEAPON, ARM, SELF)
+-- ========================================================================= --
+
+local material_options = {
+    "Plastic", "Neon", "Metal", "Wood", "Glass", "ForceField", "Concrete", 
+    "CorrodedMetal", "DiamondPlate", "Fabric", "Granite", "Grass", "Ice", 
+    "Marble", "Pebble", "Slate", "SmoothPlastic", "Sand", "Brick"
+}
+
+local material_enum_map = {
+    Plastic = Enum.Material.Plastic, Neon = Enum.Material.Neon, Metal = Enum.Material.Metal,
+    Wood = Enum.Material.Wood, Glass = Enum.Material.Glass, ForceField = Enum.Material.ForceField,
+    Concrete = Enum.Material.Concrete, CorrodedMetal = Enum.Material.CorrodedMetal, DiamondPlate = Enum.Material.DiamondPlate,
+    Fabric = Enum.Material.Fabric, Granite = Enum.Material.Granite, Grass = Enum.Material.Grass,
+    Ice = Enum.Material.Ice, Marble = Enum.Material.Marble, Pebble = Enum.Material.Pebble,
+    Slate = Enum.Material.Slate, SmoothPlastic = Enum.Material.SmoothPlastic, Sand = Enum.Material.Sand,
+    Brick = Enum.Material.Brick,
+}
+
+local MaterialBox = Tabs.Visuals:AddRightGroupbox("Materials")
+
+-- 1. WEAPON MATERIAL
+MaterialBox:AddToggle("weapon_material_enabled", { Text = "Weapon Material", Default = false })
+    :AddColorPicker("weapon_material_color", { Default = Color3.fromRGB(200, 200, 200) })
+MaterialBox:AddDropdown("weapon_material", { Values = material_options, Default = 2, Text = "Material Type" })
+MaterialBox:AddSlider("weapon_scale", { Text = "Weapon Size", Default = 1, Min = 0.1, Max = 2, Rounding = 2 })
+
+local weapon_original_sizes = {}
+
+local function update_weapon_material()
+    if not Toggles.weapon_material_enabled.Value then return end
+    
+    local imafedyou = workspace:FindFirstChild("imafedyou")
+    if not imafedyou then return end
+    
+    local weapon_color = get_color3_from_option("weapon_material_color")
+    local weapon_scale = Options.weapon_scale.Value or 1
+    
+    for _, gun_skin in ipairs(imafedyou:GetChildren()) do
+        local model = gun_skin:FindFirstChild("Model")
+        if model then
+            local union = model:FindFirstChild("Union")
+            if union and union:IsA("UnionOperation") then
+                if not weapon_original_sizes[union] then
+                    weapon_original_sizes[union] = union.Size
+                end
+                
+                local material_name = Options.weapon_material.Value or "Neon"
+                local material_enum = material_enum_map[material_name] or Enum.Material.Neon
+                union.Material = material_enum
+                union.Color = weapon_color
+                union.Size = weapon_original_sizes[union] * weapon_scale
+            end
+        end
+    end
+end
+
+Toggles.weapon_material_enabled:OnChanged(update_weapon_material)
+Options.weapon_material:OnChanged(function() if Toggles.weapon_material_enabled.Value then update_weapon_material() end end)
+Options.weapon_scale:OnChanged(function() if Toggles.weapon_material_enabled.Value then update_weapon_material() end end)
+Options.weapon_material_color:OnChanged(function()
+    if Toggles.weapon_material_enabled.Value then update_weapon_material() end
+    if Toggles.arm_material_enabled.Value then update_arms() end
+end)
+
+run_service.RenderStepped:Connect(function()
+    if Toggles.weapon_material_enabled.Value then update_weapon_material() end
+end)
+
+-- 2. ARM MATERIAL
+MaterialBox:AddDivider()
+MaterialBox:AddToggle("arm_material_enabled", { Text = "Arm Material", Default = false })
+    :AddColorPicker("arm_material_color", { Default = Color3.fromRGB(200, 200, 200) })
+MaterialBox:AddDropdown("arm_material", { Values = material_options, Default = 2, Text = "Material Type" })
+MaterialBox:AddToggle("hide_arms", { Text = "Hide Arms", Default = false })
+
+local arm_original_sizes = {}
+local viewmodel_initialized = false
+
+local function get_viewmodel() return workspace:FindFirstChild("ViewModel") end
+
+function update_arms()
+    if not viewmodel_initialized then return end
+    
+    local vm = get_viewmodel()
+    if not vm then return end
+    
+    local left_arm = vm:FindFirstChild("Left Arm")
+    local right_arm = vm:FindFirstChild("Right Arm")
+    if not left_arm or not right_arm then return end
+    
+    local weapon_scale = Options.weapon_scale.Value or 1
+    
+    if not arm_original_sizes[left_arm] then arm_original_sizes[left_arm] = left_arm.Size end
+    if not arm_original_sizes[right_arm] then arm_original_sizes[right_arm] = right_arm.Size end
+    
+    if Toggles.weapon_material_enabled.Value then
+        left_arm.Size = arm_original_sizes[left_arm] * weapon_scale
+        right_arm.Size = arm_original_sizes[right_arm] * weapon_scale
+    else
+        left_arm.Size = arm_original_sizes[left_arm]
+        right_arm.Size = arm_original_sizes[right_arm]
+    end
+    
+    if Toggles.hide_arms.Value then
+        left_arm.Transparency = 1
+        right_arm.Transparency = 1
+    elseif Toggles.arm_material_enabled.Value then
+        left_arm.Transparency = 0
+        right_arm.Transparency = 0
+        
+        local material_name = Options.arm_material.Value or "Neon"
+        local material_enum = material_enum_map[material_name] or Enum.Material.Neon
+        
+        local arm_color = nil
+        if Toggles.weapon_material_enabled.Value then
+            arm_color = get_color3_from_option("weapon_material_color")
+        else
+            arm_color = get_color3_from_option("arm_material_color")
+        end
+        
+        for _, part in ipairs({left_arm, right_arm}) do
+            if part:IsA("BasePart") then
+                part.Material = material_enum
+                if arm_color then part.Color = arm_color end
+            end
+        end
+    else
+        left_arm.Transparency = 0
+        right_arm.Transparency = 0
+    end
+end
+
+Toggles.arm_material_enabled:OnChanged(update_arms)
+Options.arm_material_color:OnChanged(function() if Toggles.arm_material_enabled.Value then update_arms() end end)
+Options.arm_material:OnChanged(function() if Toggles.arm_material_enabled.Value then update_arms() end end)
+Toggles.hide_arms:OnChanged(update_arms)
+
+local viewmodel_check_connection = nil
+local connections_setup = false
+
+viewmodel_check_connection = run_service.Heartbeat:Connect(function()
+    if connections_setup then return end
+    local vm = get_viewmodel()
+    if not vm then return end
+
+    viewmodel_initialized = true
+    connections_setup = true
+        
+    vm.ChildAdded:Connect(function(child)
+        if child.Name == "Left Arm" or child.Name == "Right Arm" then update_arms() end
+    end)
+
+    run_service.RenderStepped:Connect(function()
+        if Toggles.arm_material_enabled.Value or Toggles.hide_arms.Value or Toggles.weapon_material_enabled.Value then
+            update_arms()
+        end
+    end)
+        
+    if viewmodel_check_connection then
+        viewmodel_check_connection:Disconnect()
+        viewmodel_check_connection = nil
+    end
+end)
+
+-- 3. SELF MATERIAL
+MaterialBox:AddDivider()
+MaterialBox:AddToggle("self_material_enabled", { Text = "Self Material", Default = false })
+MaterialBox:AddDropdown("self_material_choice", { Values = material_options, Default = 6, Text = "Material Type" })
+MaterialBox:AddSlider("self_material_transparency", { Text = "Transparency", Default = 0, Min = 0, Max = 1, Rounding = 2 })
+
+local self_material_originals = {}
+local self_material_char_conn = nil
+
+local function is_part_of_tool(desc)
+    local parent = desc.Parent
+    while parent do
+        if parent:IsA("Tool") then return true end
+        parent = parent.Parent
+    end
+    return false
+end
+
+local function restore_self_material()
+    for part, data in pairs(self_material_originals) do
+        if part and part.Parent and data then
+            part.Material = data.Material
+            part.Transparency = data.Transparency
+        end
+    end
+    table.clear(self_material_originals)
+end
+
+local function apply_self_material()
+    if not Toggles.self_material_enabled.Value then return end
+    
+    local char = local_player and local_player.Character
+    if not char then return end
+    
+    local material_name = Options.self_material_choice.Value or "ForceField"
+    local material_enum = material_enum_map[material_name] or Enum.Material.ForceField
+    local transparency = math.clamp(Options.self_material_transparency.Value or 0, 0, 1)
+    
+    local allowed_parts = {
+        Head = true, Torso = true, ["UpperTorso"] = true, ["LowerTorso"] = true,
+        ["Left Arm"] = true, ["Right Arm"] = true, ["Left Leg"] = true, ["Right Leg"] = true,
+        ["LeftUpperArm"] = true, ["LeftLowerArm"] = true, ["LeftHand"] = true,
+        ["RightUpperArm"] = true, ["RightLowerArm"] = true, ["RightHand"] = true,
+        ["LeftUpperLeg"] = true, ["LeftLowerLeg"] = true, ["LeftFoot"] = true,
+        ["RightUpperLeg"] = true, ["RightLowerLeg"] = true, ["RightFoot"] = true,
+    }
+
+    for _, desc in ipairs(char:GetDescendants()) do
+        if desc:IsA("BasePart") and not is_part_of_tool(desc) and allowed_parts[desc.Name] then
+            if not self_material_originals[desc] then
+                self_material_originals[desc] = {
+                    Material = desc.Material,
+                    Transparency = desc.Transparency,
+                }
+            end
+            desc.Material = material_enum
+            desc.Transparency = transparency
+        end
+    end
+end
+
+Toggles.self_material_enabled:OnChanged(function()
+    if Toggles.self_material_enabled.Value then apply_self_material() else restore_self_material() end
+end)
+Options.self_material_choice:OnChanged(function() if Toggles.self_material_enabled.Value then apply_self_material() end end)
+Options.self_material_transparency:OnChanged(function() if Toggles.self_material_enabled.Value then apply_self_material() end end)
+
+local function bind_self_material()
+    if self_material_char_conn then
+        self_material_char_conn:Disconnect()
+        self_material_char_conn = nil
+    end
+    
+    if local_player then
+        if local_player.Character then
+            restore_self_material()
+            apply_self_material()
+        end
+        self_material_char_conn = local_player.CharacterAdded:Connect(function()
+            restore_self_material()
+            apply_self_material()
+        end)
+    end
+end
+
+bind_self_material()
+-- ========================================================================= --
+-- [UI & LOGIC] PHẦN 4: WORLD (SKYBOX, ATMOSPHERE, BLOOM, STRETCH RES)
+-- ========================================================================= --
+
+-- ==================== 1. SKYBOX & CELESTIAL ==================== --
+local SkyboxBox = Tabs.Visuals:AddRightGroupbox("Skybox & Celestial")
+
+SkyboxBox:AddDropdown("skybox_preset", { Values = {"none", "night", "starry", "classic", "snow"}, Default = 1, Text = "Skybox Preset" })
+SkyboxBox:AddSlider("clocktime", { Text = "Clock Time", Default = 12, Min = 0, Max = 24, Rounding = 2 })
+SkyboxBox:AddDropdown("celestial_texture", { Values = {"none", "breachforums", "404chan"}, Default = 1, Text = "Celestial Texture" })
+SkyboxBox:AddSlider("celestial_size", { Text = "Celestial Size", Default = 21, Min = 0, Max = 60, Rounding = 0 })
+
+local skyPresets = {
+    ["none"] = nil,
+    ["night"] = {
+        Bk = "http://www.roblox.com/asset/?id=5346760450", Dn = "http://www.roblox.com/asset/?id=5346760689",
+        Ft = "http://www.roblox.com/asset/?id=5346760919", Lf = "http://www.roblox.com/asset/?id=5346761102",
+        Rt = "http://www.roblox.com/asset/?id=5346761335", Up = "http://www.roblox.com/asset/?id=5346761509"
+    },
+    ["starry"] = {
+        Bk = "http://www.roblox.com/asset/?id=119548893", Dn = "http://www.roblox.com/asset/?id=119548958",
+        Ft = "http://www.roblox.com/asset/?id=119549025", Lf = "http://www.roblox.com/asset/?id=119549075",
+        Rt = "http://www.roblox.com/asset/?id=119551641", Up = "http://www.roblox.com/asset/?id=119551676"
+    },
+    ["classic"] = {
+        Bk = "rbxassetid://678556371", Dn = "rbxassetid://678556361", Ft = "rbxassetid://678556368",
+        Lf = "rbxassetid://678556373", Rt = "rbxassetid://678556360", Up = "rbxassetid://678556362"
+    },
+    ["snow"] = {
+        Bk = "http://www.roblox.com/asset/?id=155657655", Dn = "http://www.roblox.com/asset/?id=155674246",
+        Ft = "http://www.roblox.com/asset/?id=155657609", Lf = "http://www.roblox.com/asset/?id=155657671",
+        Rt = "http://www.roblox.com/asset/?id=155657619", Up = "http://www.roblox.com/asset/?id=155674931"
+    }
+}
+
+local defaultSky = lighting:FindFirstChildOfClass("Sky")
+local defaultSkyProps = defaultSky and {
+    Bk = defaultSky.SkyboxBk, Dn = defaultSky.SkyboxDn, Ft = defaultSky.SkyboxFt,
+    Lf = defaultSky.SkyboxLf, Rt = defaultSky.SkyboxRt, Up = defaultSky.SkyboxUp,
+    SunTextureId = defaultSky.SunTextureId, MoonTextureId = defaultSky.MoonTextureId,
+    SunAngularSize = defaultSky.SunAngularSize, MoonAngularSize = defaultSky.MoonAngularSize
+}
+
+local function apply_skybox(skybox_name)
+    local sky = lighting:FindFirstChildOfClass("Sky")
+    if not sky then
+        sky = Instance.new("Sky")
+        sky.Parent = lighting
+    end
+    
+    local preset = skyPresets[skybox_name]
+    if preset == nil then
+        if defaultSkyProps and defaultSky then
+            sky.SkyboxBk = defaultSkyProps.Bk; sky.SkyboxDn = defaultSkyProps.Dn
+            sky.SkyboxFt = defaultSkyProps.Ft; sky.SkyboxLf = defaultSkyProps.Lf
+            sky.SkyboxRt = defaultSkyProps.Rt; sky.SkyboxUp = defaultSkyProps.Up
+        end
+    else
+        sky.SkyboxBk = preset.Bk; sky.SkyboxDn = preset.Dn
+        sky.SkyboxFt = preset.Ft; sky.SkyboxLf = preset.Lf
+        sky.SkyboxRt = preset.Rt; sky.SkyboxUp = preset.Up
+    end
+end
+
+Options.skybox_preset:OnChanged(function()
+    apply_skybox(Options.skybox_preset.Value)
+end)
+
+local celestial_textures = {
+    ["none"] = nil,
+    ["breachforums"] = "rbxassetid://94220513805365",
+    ["404chan"] = "rbxassetid://75587744096959"
+}
+
+local function update_celestial()
+    local sky = lighting:FindFirstChildOfClass("Sky")
+    if not sky then
+        sky = Instance.new("Sky")
+        sky.Parent = lighting
+    end
+    
+    local texture = Options.celestial_texture.Value
+    if texture and texture ~= "none" then
+        local texture_id = celestial_textures[texture]
+        if texture_id then
+            sky.SunTextureId = texture_id
+            sky.MoonTextureId = texture_id
+        end
+    else
+        if defaultSkyProps then
+            if defaultSkyProps.SunTextureId then sky.SunTextureId = defaultSkyProps.SunTextureId end
+            if defaultSkyProps.MoonTextureId then sky.MoonTextureId = defaultSkyProps.MoonTextureId end
+        end
+    end
+    
+    if Options.celestial_size.Value then
+        sky.SunAngularSize = Options.celestial_size.Value
+        sky.MoonAngularSize = Options.celestial_size.Value
+    end
+end
+
+Options.clocktime:OnChanged(function() lighting.ClockTime = Options.clocktime.Value end)
+Options.celestial_texture:OnChanged(function() update_celestial() end)
+Options.celestial_size:OnChanged(function() update_celestial() end)
+
+
+-- ==================== 2. ATMOSPHERE ==================== --
+local AtmosphereBox = Tabs.Visuals:AddLeftGroupbox("Atmosphere")
+
+AtmosphereBox:AddToggle("atmosphere_enabled", { Text = "Enable Atmosphere", Default = false })
+    :AddColorPicker("atmosphere_color", { Default = Color3.fromRGB(255, 255, 255) })
+AtmosphereBox:AddColorPicker("atmosphere_decay", { Default = Color3.fromRGB(200, 200, 200), Title = "Decay Color" })
+AtmosphereBox:AddSlider("atmosphere_density", { Text = "Density", Default = 0.3, Min = 0, Max = 1, Rounding = 2 })
+AtmosphereBox:AddSlider("atmosphere_offset", { Text = "Offset", Default = 0.25, Min = -1, Max = 1, Rounding = 2 })
+AtmosphereBox:AddSlider("atmosphere_glare", { Text = "Glare", Default = 0, Min = 0, Max = 10, Rounding = 1 })
+AtmosphereBox:AddSlider("atmosphere_haze", { Text = "Haze", Default = 2, Min = 0, Max = 10, Rounding = 1 })
+
+local default_atmosphere_props = nil
+local created_custom_atmo = false
+
+local function get_atmosphere()
+    local atmo = lighting:FindFirstChildOfClass("Atmosphere")
+    if not atmo then
+        atmo = Instance.new("Atmosphere")
+        atmo.Name = "CustomAtmosphere"
+        atmo.Parent = lighting
+        created_custom_atmo = true
+    end
+    return atmo
+end
+
+local function store_atmosphere_defaults()
+    if default_atmosphere_props then return end
+    local atmo = lighting:FindFirstChildOfClass("Atmosphere")
+    if atmo then
+        default_atmosphere_props = {
+            Color = atmo.Color, Decay = atmo.Decay, Density = atmo.Density,
+            Offset = atmo.Offset, Glare = atmo.Glare, Haze = atmo.Haze,
+        }
+    end
+end
+
+local function restore_atmosphere()
+    local atmo = lighting:FindFirstChildOfClass("Atmosphere")
+    if not atmo then return end
+    if default_atmosphere_props then
+        atmo.Color = default_atmosphere_props.Color; atmo.Decay = default_atmosphere_props.Decay
+        atmo.Density = default_atmosphere_props.Density; atmo.Offset = default_atmosphere_props.Offset
+        atmo.Glare = default_atmosphere_props.Glare; atmo.Haze = default_atmosphere_props.Haze
+    elseif atmo.Name == "CustomAtmosphere" then
+        atmo:Destroy()
+    end
+end
+
+local function apply_atmosphere()
+    if not Toggles.atmosphere_enabled.Value then return end
+    store_atmosphere_defaults()
+    local atmo = get_atmosphere()
+    atmo.Color = Options.atmosphere_color.Value or Color3.new(1, 1, 1)
+    atmo.Decay = Options.atmosphere_decay.Value or Color3.new(1, 1, 1)
+    atmo.Density = Options.atmosphere_density.Value or 0.3
+    atmo.Offset = Options.atmosphere_offset.Value or 0.25
+    atmo.Glare = Options.atmosphere_glare.Value or 0
+    atmo.Haze = Options.atmosphere_haze.Value or 2
+end
+
+Toggles.atmosphere_enabled:OnChanged(function()
+    if Toggles.atmosphere_enabled.Value then apply_atmosphere() else restore_atmosphere() end
+end)
+Options.atmosphere_color:OnChanged(function() if Toggles.atmosphere_enabled.Value then apply_atmosphere() end end)
+Options.atmosphere_decay:OnChanged(function() if Toggles.atmosphere_enabled.Value then apply_atmosphere() end end)
+Options.atmosphere_density:OnChanged(function() if Toggles.atmosphere_enabled.Value then apply_atmosphere() end end)
+Options.atmosphere_offset:OnChanged(function() if Toggles.atmosphere_enabled.Value then apply_atmosphere() end end)
+Options.atmosphere_glare:OnChanged(function() if Toggles.atmosphere_enabled.Value then apply_atmosphere() end end)
+Options.atmosphere_haze:OnChanged(function() if Toggles.atmosphere_enabled.Value then apply_atmosphere() end end)
+
+
+-- ==================== 3. BLOOM ==================== --
+local BloomBox = Tabs.Visuals:AddLeftGroupbox("Bloom")
+
+BloomBox:AddToggle("bloom_enabled", { Text = "Enable Bloom", Default = false })
+BloomBox:AddSlider("bloom_intensity", { Text = "Intensity", Default = 1, Min = 0, Max = 10, Rounding = 1 })
+BloomBox:AddSlider("bloom_size", { Text = "Size", Default = 24, Min = 0, Max = 100, Rounding = 0 })
+BloomBox:AddSlider("bloom_threshold", { Text = "Threshold", Default = 1, Min = 0, Max = 5, Rounding = 1 })
+
+local default_bloom_props = nil
+
+local function get_bloom()
+    local bloom = lighting:FindFirstChildOfClass("BloomEffect")
+    if not bloom then
+        bloom = Instance.new("BloomEffect")
+        bloom.Name = "CustomBloom"
+        bloom.Parent = lighting
+    end
+    return bloom
+end
+
+local function store_bloom_defaults()
+    if default_bloom_props then return end
+    local bloom = lighting:FindFirstChildOfClass("BloomEffect")
+    if bloom then
+        default_bloom_props = {
+            Intensity = bloom.Intensity, Size = bloom.Size, 
+            Threshold = bloom.Threshold, Enabled = bloom.Enabled,
+        }
+    end
+end
+
+local function restore_bloom()
+    local bloom = lighting:FindFirstChildOfClass("BloomEffect")
+    if not bloom then return end
+    if default_bloom_props then
+        bloom.Intensity = default_bloom_props.Intensity
+        bloom.Size = default_bloom_props.Size
+        bloom.Threshold = default_bloom_props.Threshold
+        bloom.Enabled = default_bloom_props.Enabled
+    elseif bloom.Name == "CustomBloom" then
+        bloom:Destroy()
+    else
+        bloom.Enabled = false
+    end
+end
+
+local function apply_bloom()
+    if not Toggles.bloom_enabled.Value then return end
+    store_bloom_defaults()
+    local bloom = get_bloom()
+    bloom.Enabled = true
+    bloom.Intensity = Options.bloom_intensity.Value or 1
+    bloom.Size = Options.bloom_size.Value or 24
+    bloom.Threshold = Options.bloom_threshold.Value or 1
+end
+
+Toggles.bloom_enabled:OnChanged(function()
+    if Toggles.bloom_enabled.Value then apply_bloom() else restore_bloom() end
+end)
+Options.bloom_intensity:OnChanged(function() if Toggles.bloom_enabled.Value then apply_bloom() end end)
+Options.bloom_size:OnChanged(function() if Toggles.bloom_enabled.Value then apply_bloom() end end)
+Options.bloom_threshold:OnChanged(function() if Toggles.bloom_enabled.Value then apply_bloom() end end)
+
+
+-- ==================== 4. STRETCHED RES ==================== --
+local StretchBox = Tabs.Visuals:AddRightGroupbox("Stretched Res")
+
+StretchBox:AddToggle("stretch_enabled", { Text = "Enable Stretched Res", Default = false })
+StretchBox:AddSlider("stretch_factor", { Text = "Stretch Factor", Default = 1, Min = 1, Max = 5, Rounding = 2 })
+
+local stretch_connection = nil
+
+local function disconnect_stretch()
+    if stretch_connection then
+        stretch_connection:Disconnect()
+        stretch_connection = nil
+    end
+end
+
+local function get_stretch_scale()
+    local ui_value = math.max(Options.stretch_factor.Value or 1, 0.01)
+    return math.clamp(1 / ui_value, 0.01, 1)
+end
+
+local function apply_stretch()
+    disconnect_stretch()
+    if not Toggles.stretch_enabled.Value then return end
+    
+    stretch_connection = run_service.RenderStepped:Connect(function()
+        if camera then
+            local f = get_stretch_scale()
+            local magic = CFrame.new(0, 0, 0, 1, 0, 0, 0, f, 0, 0, 0, 1)
+            camera.CFrame = camera.CFrame * magic
+        end
+    end)
+end
+
+Toggles.stretch_enabled:OnChanged(function() apply_stretch() end)
+Options.stretch_factor:OnChanged(function() if Toggles.stretch_enabled.Value then apply_stretch() end end)
+-- ========================================================================= --
+-- [[ PHẦN 5 FIXED: GIAO DIỆN & LOGIC CHO TAB MISC VÀ CONFIGS ]] --
+-- BẮT BUỘC: Tạo UI trước, Logic sau để tránh lỗi ngầm
+-- ========================================================================= --
+
+local MiscTab = Tabs.Misc
+local ConfigsTab = Tabs.Configs
+
+-- ------------------------------------------------------------------------- --
+-- 1. TẠO GIAO DIỆN (UI) CHO TAB MISC
+-- ------------------------------------------------------------------------- --
+local WeatherBox = MiscTab:AddLeftGroupbox("Weather & World")
+WeatherBox:AddToggle("rain_enabled", { Text = "Cry in the Rain", Default = false }):AddColorPicker("rain_color", { Default = Color3.fromRGB(200, 200, 200) })
+WeatherBox:AddSlider("rain_speed", { Text = "Rain Speed", Default = 0.5, Min = 0.1, Max = 10, Rounding = 1 })
+WeatherBox:AddSlider("rain_size", { Text = "Rain Size", Default = 10, Min = 1, Max = 20, Rounding = 0 })
+
+WeatherBox:AddDivider()
+WeatherBox:AddToggle("snow_enabled", { Text = "Cry in the Snow", Default = false }):AddColorPicker("snow_color", { Default = Color3.fromRGB(255, 255, 255) })
+WeatherBox:AddSlider("snow_speed", { Text = "Snow Speed", Default = 0.1, Min = 0.1, Max = 10, Rounding = 1 })
+WeatherBox:AddSlider("snow_size", { Text = "Snow Size", Default = 5, Min = 1, Max = 20, Rounding = 0 })
+
+local VisMiscBox = MiscTab:AddLeftGroupbox("Visual Misc")
+VisMiscBox:AddToggle("china_hat_enabled", { Text = "China Hat", Default = false }):AddColorPicker("china_hat_color", { Default = Color3.fromRGB(200, 200, 200) })
+VisMiscBox:AddToggle("soul_particles_enabled", { Text = "Soul Particles on Death", Default = false })
+VisMiscBox:AddDivider()
+VisMiscBox:AddToggle("bullet_tracers_enabled", { Text = "Bullet Tracers", Default = false }):AddColorPicker("bullet_tracer_color", { Default = Color3.fromRGB(200, 200, 200) })
+VisMiscBox:AddSlider("bullet_tracer_lifetime", { Text = "Tracer Lifetime", Default = 1, Min = 0.05, Max = 3, Rounding = 2 })
+
+local MoveBox = MiscTab:AddRightGroupbox("Movement")
+MoveBox:AddToggle("bhop_enabled", { Text = "Bhop", Default = false })
+MoveBox:AddToggle("speed_enabled", { Text = "Speed", Default = false }):AddKeyPicker("speed_keybind", { Default = "Z", Mode = "Toggle", Text = "Speed" })
+MoveBox:AddSlider("speed_value", { Text = "Speed Value", Default = 20, Min = 0, Max = 50, Rounding = 0 })
+
+local SpinBox = MiscTab:AddRightGroupbox("Spin")
+SpinBox:AddToggle("spinbot_enabled", { Text = "Spin Bot", Default = false })
+SpinBox:AddSlider("spinbot_speed", { Text = "Spin Speed", Default = 20, Min = 1, Max = 100, Rounding = 0 })
+
+
+-- ------------------------------------------------------------------------- --
+-- 2. TẠO GIAO DIỆN (UI) CHO TAB CONFIGS & THEMES
+-- ------------------------------------------------------------------------- --
+local MenuSection = ConfigsTab:AddLeftGroupbox("Menu Settings")
+MenuSection:AddToggle("keybind_menu_open", { Text = "Open Keybind List", Default = false, Callback = function(value) Library.KeybindFrame.Visible = value end })
+MenuSection:AddToggle("watermark_enabled", { Text = "Watermark", Default = true, Callback = function(value) Library:SetWatermarkVisibility(value) end })
+MenuSection:AddLabel("Menu Keybind"):AddKeyPicker("MenuKeybind", { Default = "RightShift", NoUI = true, Text = "Menu Keybind" })
+Library.ToggleKeybind = Options.MenuKeybind
+
+MenuSection:AddDivider()
+MenuSection:AddButton({ Text = "Copy JobID", Func = function() setclipboard(game.JobId) end })
+MenuSection:AddButton({ Text = "Copy GameID", Func = function() setclipboard(game.GameId) end })
+MenuSection:AddButton({ Text = "Rejoin Server", Func = function() game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, game.JobId, players.LocalPlayer) end })
+MenuSection:AddButton({ Text = "Unload Script", Func = function() Library:Unload() end })
+
+-- Setup SaveManager & ThemeManager
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
+ThemeManager:SetFolder("KojoHub")
+SaveManager:SetFolder("KojoHub/Flick")
+SaveManager:BuildConfigSection(ConfigsTab)
+ThemeManager:ApplyToTab(ConfigsTab)
+
+
+-- ------------------------------------------------------------------------- --
+-- 3. LOGIC CHO TAB MISC (CHỈ GỌI SAU KHI ĐÃ CÓ UI)
+-- ------------------------------------------------------------------------- --
+local function get_color3_from_option(opt)
+    local val = Options[opt].Value
+    if typeof(val) == "Color3" then return val end
+    return Color3.fromRGB(200, 200, 200)
+end
+
+-- [LOGIC MƯA / TUYẾT]
+local rain_parts = {}
+local rain_spawn_radius = 300
+local rain_spawn_height = 100
+
+Toggles.rain_enabled:OnChanged(function()
+    if not Toggles.rain_enabled.Value then
+        for _, part in ipairs(rain_parts) do if part and part.Parent then part:Destroy() end end
+        rain_parts = {}
+    end
+end)
+
+local snow_parts = {}
+local snow_spawn_radius = 300
+local snow_spawn_height = 100
+
+Toggles.snow_enabled:OnChanged(function()
+    if not Toggles.snow_enabled.Value then
+        for _, part in ipairs(snow_parts) do if part and part.Parent then part:Destroy() end end
+        snow_parts = {}
+    end
+end)
+
+run_service.Heartbeat:Connect(function()
+    if Toggles.rain_enabled.Value then
+        if #rain_parts < 50 then
+            local part = Instance.new("Part")
+            local rain_size = Options.rain_size.Value or 10
+            part.Size = Vector3.new(0.1, math.random(rain_size * 0.5, rain_size * 1.5), 0.1)
+            part.Material = Enum.Material.Neon
+            part.Color = get_color3_from_option("rain_color")
+            part.Transparency = 0.3; part.CanCollide = false; part.Anchored = true
+            
+            local player_pos = local_player.Character and local_player.Character:FindFirstChild("HumanoidRootPart")
+            if player_pos then
+                local angle = math.random() * math.pi * 2
+                local distance = math.random() * rain_spawn_radius
+                local x = math.cos(angle) * distance; local z = math.sin(angle) * distance
+                part.CFrame = CFrame.new(player_pos.Position.X + x, player_pos.Position.Y + rain_spawn_height + math.random(-20, 20), player_pos.Position.Z + z)
+            else
+                part.CFrame = CFrame.new(math.random(-100, 100), 50, math.random(-100, 100))
+            end
+            part.Parent = workspace; table.insert(rain_parts, part)
+        end
+        
+        local rain_speed = Options.rain_speed.Value or 0.5
+        local player_pos = local_player.Character and local_player.Character:FindFirstChild("HumanoidRootPart")
+        
+        for i = #rain_parts, 1, -1 do
+            local part = rain_parts[i]
+            if part and part.Parent then
+                part.Color = get_color3_from_option("rain_color")
+                part.CFrame = part.CFrame * CFrame.new(0, -rain_speed, 0)
+                local should_remove = part.Position.Y < -10 or (player_pos and (part.Position - player_pos.Position).Magnitude > rain_spawn_radius * 1.5)
+                if should_remove then part:Destroy() table.remove(rain_parts, i) end
+            else table.remove(rain_parts, i) end
+        end
+    end
+    
+    if Toggles.snow_enabled.Value then
+        if #snow_parts < 50 then
+            local part = Instance.new("Part")
+            local snow_size = Options.snow_size.Value or 5
+            local size_value = math.random(snow_size * 0.5, snow_size * 1.5) * 0.1
+            part.Size = Vector3.new(size_value, size_value, size_value)
+            part.Shape = Enum.PartType.Ball; part.Material = Enum.Material.Neon
+            part.Color = get_color3_from_option("snow_color")
+            part.Transparency = 0.3; part.CanCollide = false; part.Anchored = true
+            
+            local player_pos = local_player.Character and local_player.Character:FindFirstChild("HumanoidRootPart")
+            if player_pos then
+                local angle = math.random() * math.pi * 2
+                local distance = math.random() * snow_spawn_radius
+                local x = math.cos(angle) * distance; local z = math.sin(angle) * distance
+                part.CFrame = CFrame.new(player_pos.Position.X + x, player_pos.Position.Y + snow_spawn_height + math.random(-20, 20), player_pos.Position.Z + z)
+            else
+                part.CFrame = CFrame.new(math.random(-100, 100), 50, math.random(-100, 100))
+            end
+            part.Parent = workspace; table.insert(snow_parts, part)
+        end
+        
+        local snow_speed = Options.snow_speed.Value or 0.5
+        local player_pos = local_player.Character and local_player.Character:FindFirstChild("HumanoidRootPart")
+        
+        for i = #snow_parts, 1, -1 do
+            local part = snow_parts[i]
+            if part and part.Parent then
+                part.Color = get_color3_from_option("snow_color")
+                part.CFrame = part.CFrame * CFrame.new(0, -snow_speed, 0)
+                local should_remove = part.Position.Y < -10 or (player_pos and (part.Position - player_pos.Position).Magnitude > snow_spawn_radius * 1.5)
+                if should_remove then part:Destroy() table.remove(snow_parts, i) end
+            else table.remove(snow_parts, i) end
+        end
+    end
+end)
+
+-- [LOGIC CHINA HAT]
+local china_hat_lines = {}
+local function ClearChinaHat()
+    for _, lines in pairs(china_hat_lines) do for _, line in ipairs(lines) do if line and line.Remove then pcall(function() line:Remove() end) end end end
+    china_hat_lines = {}
+end
+
+Toggles.china_hat_enabled:OnChanged(function() if not Toggles.china_hat_enabled.Value then ClearChinaHat() end end)
+
+run_service.RenderStepped:Connect(function()
+    if Toggles.china_hat_enabled.Value then
+        if Library.KeybindFrame.Visible then
+            for player, lines in pairs(china_hat_lines) do for _, line in ipairs(lines) do if line then line.Visible = false end end end
+            return
+        end
+        
+        if local_player and local_player.Character then
+            local head = local_player.Character:FindFirstChild("Head")
+            if head then
+                local camera_pos = camera.CFrame.Position
+                local head_pos = head.Position
+                if (camera_pos - head_pos).Magnitude < 5 then
+                    if china_hat_lines[local_player] then for _, line in ipairs(china_hat_lines[local_player]) do if line then line.Visible = false end end end
+                    return
+                end
+                
+                local hat_height, hat_radius, segments = 1.0, 1.5, 48
+                local apex_pos = Vector3.new(head_pos.X, head_pos.Y + hat_height + 0.15, head_pos.Z)
+                local base_points, bottom_points = {}, {}
+                
+                for i = 0, segments - 1 do
+                    local angle = (2 * math.pi * i) / segments
+                    table.insert(base_points, Vector3.new(head_pos.X + hat_radius * math.cos(angle), head_pos.Y + 0.2, head_pos.Z + hat_radius * math.sin(angle)))
+                    table.insert(bottom_points, Vector3.new(head_pos.X + hat_radius * 0.95 * math.cos(angle), head_pos.Y + 0.15, head_pos.Z + hat_radius * 0.95 * math.sin(angle)))
+                end
+                
+                local apex_screen, apex_on_screen = camera:WorldToViewportPoint(apex_pos)
+                if apex_on_screen then
+                    local base_screen, bottom_screen, any_on_screen = {}, {}, apex_on_screen
+                    for _, point in ipairs(base_points) do
+                        local sp, os = camera:WorldToViewportPoint(point)
+                        table.insert(base_screen, Vector2.new(sp.X, sp.Y)); if os then any_on_screen = true end
+                    end
+                    for _, point in ipairs(bottom_points) do
+                        local sp, _ = camera:WorldToViewportPoint(point)
+                        table.insert(bottom_screen, Vector2.new(sp.X, sp.Y))
+                    end
+                    
+                    if any_on_screen then
+                        local col = get_color3_from_option("china_hat_color")
+                        if not china_hat_lines[local_player] then
+                            china_hat_lines[local_player] = {}
+                            for i = 1, segments * 2 do table.insert(china_hat_lines[local_player], Drawing.new("Line")) end
+                            for i = 1, segments do table.insert(china_hat_lines[local_player], Drawing.new("Line")) end
+                            for i = 1, segments do table.insert(china_hat_lines[local_player], Drawing.new("Line")) end
+                            for i = 1, segments do table.insert(china_hat_lines[local_player], Drawing.new("Line")) end
+                        end
+                        
+                        local apex_vec = Vector2.new(apex_screen.X, apex_screen.Y)
+                        for i = 1, segments do
+                            local next_idx = (i % segments) + 1
+                            local off = Vector2.new(apex_vec.X + math.cos((2 * math.pi * (i - 1)) / segments) * 2.0, apex_vec.Y + math.sin((2 * math.pi * (i - 1)) / segments) * 2.0)
+                            
+                            local l1 = china_hat_lines[local_player][(i - 1) * 2 + 1]
+                            l1.From = off; l1.To = base_screen[i]; l1.Visible = true; l1.Color = col; l1.Transparency = 0.58; l1.Thickness = 1
+                            local l2 = china_hat_lines[local_player][(i - 1) * 2 + 2]
+                            l2.From = off; l2.To = base_screen[next_idx]; l2.Visible = true; l2.Color = col; l2.Transparency = 0.58; l2.Thickness = 1
+                            
+                            local out1 = china_hat_lines[local_player][segments * 2 + i]
+                            out1.From = base_screen[i]; out1.To = base_screen[next_idx]; out1.Visible = true; out1.Color = Color3.new(0,0,0); out1.Transparency = 0.61; out1.Thickness = 1.2
+                            
+                            local bl1 = china_hat_lines[local_player][segments * 3 + i]
+                            bl1.From = bottom_screen[i]; bl1.To = bottom_screen[next_idx]; bl1.Visible = true; bl1.Color = col; bl1.Transparency = 0.58; bl1.Thickness = 1
+                            
+                            local bout1 = china_hat_lines[local_player][segments * 4 + i]
+                            bout1.From = bottom_screen[i]; bout1.To = bottom_screen[next_idx]; bout1.Visible = true; bout1.Color = Color3.new(0,0,0); bout1.Transparency = 0.61; bout1.Thickness = 1.2
+                        end
+                    end
+                end
+            end
+        end
+        for player, lines in pairs(china_hat_lines) do
+            if player ~= local_player or not player or not player.Parent or not player.Character then
+                for _, line in ipairs(lines) do if line and line.Remove then line:Remove() end end
+                china_hat_lines[player] = nil
+            end
+        end
+    else
+        ClearChinaHat()
+    end
+end)
+
+local_player.CharacterAdded:Connect(function(character)
+    if Toggles.china_hat_enabled.Value and china_hat_lines[local_player] then
+        for _, line in ipairs(china_hat_lines[local_player]) do if line and line.Remove then line:Remove() end end
+        china_hat_lines[local_player] = nil
+    end
+end)
+players.PlayerRemoving:Connect(function(player)
+    if player == local_player and china_hat_lines[local_player] then
+        for _, line in ipairs(china_hat_lines[local_player]) do if line and line.Remove then line:Remove() end end
+        china_hat_lines[local_player] = nil
+    end
+end)
+
+-- [LOGIC SOUL PARTICLES]
+local soul_templates = nil
+local applied_souls = {}
+local soul_workspace_conn = nil
+
+local function build_soul_templates()
+    if soul_templates then soul_templates:Destroy() soul_templates = nil end
+    local Attachment = Instance.new("Attachment")
+    local Sparks = Instance.new("ParticleEmitter")
+    Sparks.Name = "Sparks"; Sparks.Lifetime = NumberRange.new(1, 2.2); Sparks.SpreadAngle = Vector2.new(180, 180); Sparks.LightEmission = 1; Sparks.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255)); Sparks.Drag = 2; Sparks.VelocitySpread = 180; Sparks.Speed = NumberRange.new(6, 10); Sparks.Brightness = 2; Sparks.Rate = 16; Sparks.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.35, 0.6, 0.5), NumberSequenceKeypoint.new(1, 0)}); Sparks.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.45), NumberSequenceKeypoint.new(1, 1)}); Sparks.Acceleration = Vector3.new(0, 4, 0); Sparks.ZOffset = -1; Sparks.Texture = "rbxassetid://8611887361"; Sparks.RotSpeed = NumberRange.new(-30, 30); Sparks.Orientation = Enum.ParticleOrientation.VelocityParallel; Sparks.Parent = Attachment
+    local StarSparks = Instance.new("ParticleEmitter")
+    StarSparks.Name = "Star Sparks"; StarSparks.Lifetime = NumberRange.new(1.4, 2.4); StarSparks.SpreadAngle = Vector2.new(180, 180); StarSparks.LightEmission = 1; StarSparks.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255)); StarSparks.Drag = 2; StarSparks.VelocitySpread = 180; StarSparks.Speed = NumberRange.new(4, 8); StarSparks.Brightness = 2; StarSparks.Rate = 12; StarSparks.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.35, 0.65, 0.65), NumberSequenceKeypoint.new(1, 0)}); StarSparks.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.5), NumberSequenceKeypoint.new(1, 1)}); StarSparks.Acceleration = Vector3.new(0, 4, 0); StarSparks.ZOffset = 2; StarSparks.Texture = "rbxassetid://8611887703"; StarSparks.RotSpeed = NumberRange.new(-30, 30); StarSparks.Rotation = NumberRange.new(-30, 30); StarSparks.Parent = Attachment
+    local StarSparks2 = StarSparks:Clone(); StarSparks2.Parent = Attachment
+    soul_templates = Attachment
+    return soul_templates
+end
+
+local function cleanup_soul(model)
+    local atts = applied_souls[model]
+    if atts then
+        applied_souls[model] = nil
+        for _, att in ipairs(atts) do
+            pcall(function()
+                for _, desc in ipairs(att:GetDescendants()) do if desc:IsA("ParticleEmitter") then desc.Enabled = false; desc.Rate = 0 end end
+                task.delay(2, function() pcall(function() att:Destroy() end) end)
+            end)
+        end
+    end
+end
+
+local function apply_soul_particles(inst)
+    local model = nil
+    if inst and inst:IsA("Model") and inst.Name == "deadbody" then model = inst 
+    elseif inst then local ancestor = inst:FindFirstAncestorWhichIsA("Model") if ancestor and ancestor.Name == "deadbody" then model = ancestor end end
+    
+    if not model or applied_souls[model] or not soul_templates then return end
+    local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChild("LowerTorso") or model:FindFirstChild("Torso") or model:FindFirstChild("UpperTorso") or model:FindFirstChildWhichIsA("BasePart")
+    if not root then return end
+    local att = soul_templates:Clone(); att.Parent = root; applied_souls[model] = { att }
+    model.AncestryChanged:Connect(function(_, parent) if not parent then cleanup_soul(model) end end)
+end
+
+local function disable_souls()
+    for model, _ in pairs(applied_souls) do cleanup_soul(model) end
+    if soul_workspace_conn then soul_workspace_conn:Disconnect(); soul_workspace_conn = nil end
+end
+
+Toggles.soul_particles_enabled:OnChanged(function()
+    if Toggles.soul_particles_enabled.Value then
+        disable_souls()
+        build_soul_templates()
+        for _, child in ipairs(workspace:GetDescendants()) do apply_soul_particles(child) end
+        soul_workspace_conn = workspace.DescendantAdded:Connect(function(child) apply_soul_particles(child) end)
+    else disable_souls() end
+end)
+
+-- [LOGIC BULLET TRACERS]
+local bullet_tracers = {}
+local function clear_bullet_tracers()
+    for _, tracer in ipairs(bullet_tracers) do if tracer.line then pcall(function() tracer.line.Visible = false tracer.line:Remove() end) end end
+    table.clear(bullet_tracers)
+end
+
+local function get_muzzle_world_tracer()
+    local imafedyou = workspace:FindFirstChild("imafedyou")
+    if imafedyou then
+        for _, desc in ipairs(imafedyou:GetDescendants()) do
+            if desc:IsA("BasePart") and desc.Name == "Muz" then return desc.Position, desc.CFrame.LookVector end
+        end
+    end
+    return nil, nil
+end
+
+user_input_service.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.UserInputType == Enum.UserInputType.MouseButton1 and Toggles.bullet_tracers_enabled.Value then
+        local muzzle_pos, muzzle_dir = get_muzzle_world_tracer()
+        if muzzle_pos and muzzle_dir then
+            local end_pos = muzzle_pos + (muzzle_dir * 2000)
+            local line = Drawing.new("Line")
+            line.Thickness = 2; line.Transparency = 1; line.Visible = true; line.Color = get_color3_from_option("bullet_tracer_color")
+            table.insert(bullet_tracers, { line = line, start_pos = muzzle_pos, end_pos = end_pos, created = tick(), lifetime = Options.bullet_tracer_lifetime.Value or 1 })
+        end
+    end
+end)
+
+run_service.RenderStepped:Connect(function()
+    if not camera then return end
+    for i = #bullet_tracers, 1, -1 do
+        local t = bullet_tracers[i]
+        local age = tick() - t.created
+        local life = t.lifetime or 1
+        if age >= life then
+            if t.line then pcall(function() t.line:Remove() end) end
+            table.remove(bullet_tracers, i)
+        else
+            local f_pos, f_os = camera:WorldToViewportPoint(t.start_pos)
+            local t_pos, t_os = camera:WorldToViewportPoint(t.end_pos)
+            if f_os and t_os then
+                t.line.From = Vector2.new(f_pos.X, f_pos.Y); t.line.To = Vector2.new(t_pos.X, t_pos.Y)
+                t.line.Transparency = 1 - (age / life); t.line.Visible = true; t.line.Color = get_color3_from_option("bullet_tracer_color")
+            else t.line.Visible = false end
+        end
+    end
+end)
+Toggles.bullet_tracers_enabled:OnChanged(function() if not Toggles.bullet_tracers_enabled.Value then clear_bullet_tracers() end end)
+
+-- [LOGIC MOVEMENT & SPINBOT]
+local function remove_spin(char)
+    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+    if root then for _, v in ipairs(root:GetChildren()) do if v.Name == "Spinning" then v:Destroy() end end end
+end
+
+local function apply_spin()
+    if not Toggles.spinbot_enabled.Value then return end
+    local char = local_player and local_player.Character
+    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+    if root then
+        remove_spin(char)
+        local Spin = Instance.new("BodyAngularVelocity")
+        Spin.Name = "Spinning"; Spin.Parent = root; Spin.MaxTorque = Vector3.new(0, math.huge, 0); Spin.AngularVelocity = Vector3.new(0, Options.spinbot_speed.Value or 20, 0)
+    end
+end
+
+Toggles.spinbot_enabled:OnChanged(function() if Toggles.spinbot_enabled.Value then apply_spin() else remove_spin(local_player and local_player.Character) end end)
+Options.spinbot_speed:OnChanged(function() if Toggles.spinbot_enabled.Value then apply_spin() end end)
+
+if local_player then
+    local_player.CharacterAdded:Connect(function(char)
+        task.defer(function() if Toggles.spinbot_enabled.Value then apply_spin() end end)
+        char.ChildRemoved:Connect(function() if Toggles.spinbot_enabled.Value then apply_spin() end end)
+    end)
+end
+
+run_service.Heartbeat:Connect(function(dt)
+    local char = local_player and local_player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+
+    if hum and Toggles.bhop_enabled.Value then
+        if hum.MoveDirection.Magnitude > 0 and hum.FloorMaterial ~= Enum.Material.Air then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping); hum.Jump = true
+        end
+    end
+
+    if hum and root and Toggles.speed_enabled.Value and Options.speed_keybind:GetState() then
+        if hum.SeatPart then return end
+        local move_dir = hum.MoveDirection
+        if move_dir.Magnitude > 0 then
+            local speed = Options.speed_value.Value or 0
+            if speed > 0 then
+                local delta = move_dir.Unit * speed * dt
+                root.CFrame = CFrame.new(root.Position + delta, root.Position + delta + root.CFrame.LookVector)
+            end
+        end
+    end
+end)
+
+-- ------------------------------------------------------------------------- --
+-- 4. HỆ THỐNG UNLOAD CLEANUP TỰ ĐỘNG CỦA KOJO HUB
+-- ------------------------------------------------------------------------- --
+local function cleanup_visual_effects()
+    pcall(function() if ClearChinaHat then ClearChinaHat() end end)
+    pcall(function() if disable_souls then disable_souls() end end)
+    pcall(function() if clear_bullet_tracers then clear_bullet_tracers() end end)
+    pcall(function() if typeof(restore_self_material) == "function" then restore_self_material() end end)
+    pcall(function() if typeof(restore_atmosphere) == "function" then restore_atmosphere() end end)
+    pcall(function() if typeof(restore_bloom) == "function" then restore_bloom() end end)
+    pcall(function() if typeof(disconnect_stretch) == "function" then disconnect_stretch() end end)
+end
+
+Library:OnUnload(function()
+    pcall(function() if RemoveAllChams then RemoveAllChams() end end)
+    pcall(function() if RemoveAllESP then RemoveAllESP() end end)
+    cleanup_visual_effects()
+    print("Kojo Hub Unloaded Successfully!")
+end)
+
+SaveManager:LoadAutoloadConfig()
+Library:Notify({ Title = "Kojo Hub", Description = "Loaded Successfully! Configs ready.", Time = 8 })
