@@ -1,0 +1,6 @@
+local Config = {
+    ExpectedToken = "KojoAuth_VIP_2026_Unbreakable",
+    GameId = 136801880565837
+}
+
+return Config
